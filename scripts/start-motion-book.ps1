@@ -1,0 +1,130 @@
+param(
+  [switch]$NoBrowser
+)
+
+$ErrorActionPreference = 'Stop'
+$OutputEncoding = [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$rootDir = Split-Path -Parent $scriptDir
+$statePath = Join-Path $rootDir '.motion-book-server.json'
+$stdoutLogPath = Join-Path $rootDir '.motion-book-server.out.log'
+$stderrLogPath = Join-Path $rootDir '.motion-book-server.err.log'
+
+function Test-Server {
+  param([int]$Port)
+
+  try {
+    $response = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/" -UseBasicParsing -TimeoutSec 2
+    return $response.StatusCode -ge 200 -and $response.StatusCode -lt 500
+  }
+  catch {
+    return $false
+  }
+}
+
+function Get-FreePort {
+  $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+  $listener.Start()
+
+  try {
+    return ([Net.IPEndPoint]$listener.LocalEndpoint).Port
+  }
+  finally {
+    $listener.Stop()
+  }
+}
+
+Set-Location -LiteralPath $rootDir
+
+if (Test-Path -LiteralPath $statePath) {
+  try {
+    $existingState = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json
+    if ($existingState.port -and (Test-Server -Port $existingState.port)) {
+      if (-not $NoBrowser) {
+        Start-Process "http://127.0.0.1:$($existingState.port)/"
+      }
+      Write-Host "motion-book is already running."
+      exit 0
+    }
+
+    if ($existingState.pid) {
+      Stop-Process -Id $existingState.pid -Force -ErrorAction SilentlyContinue
+    }
+  }
+  finally {
+    Remove-Item -LiteralPath $statePath -Force -ErrorAction SilentlyContinue
+  }
+}
+
+$nodePath = (Get-Command node.exe -ErrorAction Stop).Source
+$npmPath = (Get-Command npm.cmd -ErrorAction Stop).Source
+
+& $npmPath run build
+if ($LASTEXITCODE -ne 0) {
+  throw 'Build failed.'
+}
+
+if (-not (Test-Path -LiteralPath (Join-Path $rootDir 'dist/index.html'))) {
+  throw 'dist/index.html was not generated.'
+}
+
+$port = Get-FreePort
+
+if (Test-Path -LiteralPath $stdoutLogPath) {
+  Remove-Item -LiteralPath $stdoutLogPath -Force -ErrorAction SilentlyContinue
+}
+
+if (Test-Path -LiteralPath $stderrLogPath) {
+  Remove-Item -LiteralPath $stderrLogPath -Force -ErrorAction SilentlyContinue
+}
+
+$process = Start-Process `
+  -FilePath $nodePath `
+  -ArgumentList @('scripts/serve-dist.mjs', '--port', "$port") `
+  -WorkingDirectory $rootDir `
+  -WindowStyle Hidden `
+  -RedirectStandardOutput $stdoutLogPath `
+  -RedirectStandardError $stderrLogPath `
+  -PassThru
+
+$isReady = $false
+
+for ($i = 0; $i -lt 50; $i++) {
+  Start-Sleep -Milliseconds 200
+
+  if ($process.HasExited) {
+    break
+  }
+
+  if (Test-Server -Port $port) {
+    $isReady = $true
+    break
+  }
+}
+
+if (-not $isReady) {
+  if (-not $process.HasExited) {
+    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+  }
+
+  $stderrText = ''
+  if (Test-Path -LiteralPath $stderrLogPath) {
+    $stderrText = Get-Content -LiteralPath $stderrLogPath -Raw
+  }
+
+  throw "Server failed to start. $stderrText"
+}
+
+@{
+  pid = $process.Id
+  port = $port
+  startedAt = (Get-Date).ToString('o')
+} | ConvertTo-Json -Compress | Set-Content -LiteralPath $statePath -Encoding utf8
+
+if (-not $NoBrowser) {
+  Start-Process "http://127.0.0.1:$port/"
+}
+
+Write-Host "motion-book: http://127.0.0.1:$port/"
+Write-Host "Use stop-motion-book.bat to stop the local server."

@@ -1,0 +1,5 @@
+node_modules/
+dist/
+.motion-book-server.json
+.motion-book-server.out.log
+.motion-book-server.err.log

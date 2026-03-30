@@ -1,0 +1,18 @@
+{
+  "name": "text-ocean-fish",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "serve:dist": "node scripts/serve-dist.mjs",
+    "start:local": "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File ./scripts/start-motion-book.ps1",
+    "stop:local": "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File ./scripts/stop-motion-book.ps1"
+  },
+  "dependencies": {
+    "@chenglou/pretext": "^0.0.3",
+    "vite": "^5.4.21"
+  }
+}
