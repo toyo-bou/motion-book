@@ -2,6 +2,13 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const fpsEl = document.getElementById('fps-counter');
 const charEl = document.getElementById('char-count');
+const startScreenEl = document.getElementById('start-screen');
+const toggleInputButton = document.getElementById('toggle-input-button');
+const startButton = document.getElementById('start-button');
+const textModalEl = document.getElementById('text-modal');
+const closeInputButton = document.getElementById('close-input-button');
+const applyInputButton = document.getElementById('apply-input-button');
+const textInputEl = document.getElementById('source-text');
 
 const PRIMARY_FONT_NAME = 'Kiwi Maru';
 const FONT_FAMILY = `"${PRIMARY_FONT_NAME}", "Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif`;
@@ -10,6 +17,9 @@ const MAX_FONT_SIZE = 22;
 const LINE_HEIGHT_RATIO = 1.72;
 const CJK_WIDTH_RATIO = 1.28;
 const TARGET_VISIBLE_CHARS = 600;
+const A4_ASPECT_RATIO = 1 / Math.sqrt(2);
+const TEXT_FLOW_INTERVAL_MS = 100;
+const TEXT_CLEARANCE_MULTIPLIER = 1.18;
 const FONT_LOAD_TIMEOUT_MS = 3000;
 const RESIZE_DEBOUNCE_MS = 180;
 const LAYOUT_SAMPLES = ['あ', '海', '頁', '魚', '羊', '紙', 'う', 'ね', '書', '読', '語', '灯', '余', '白'];
@@ -22,7 +32,7 @@ const FISH_STROKE = 'rgba(50, 55, 73, 0.92)';
 const FISH_ACCENT = 'rgba(138, 153, 182, 0.36)';
 const FISH_EYE = 'rgba(28, 22, 18, 0.92)';
 
-const BOOK_TEXT_SOURCE = `
+const DEFAULT_BOOK_TEXT_SOURCE = `
 ページの真ん中に置かれた羊皮紙は、ひとつの海のようでもあり、誰かの机の上にひっそり残された長い手紙のようでもある。乾いた繊維の目を追っていくと、昨日の午後に零れた光、まだ名前のつかない感情、言いそびれた約束、ずっと胸の底に沈めた小さな願いが、丸い文字になってゆっくり立ちのぼってくる。読んでいるはずなのに、読んでいるというより、耳を澄ませて紙のぬくもりを聴いているような気持ちになる。ひと文字ごとに呼吸があり、行と行のあいだには、言葉になる前のためらいが薄く積もっている。
 
 この頁には急ぐための筋道がない。はじめから終わりへ一直線に進むかわりに、指先を止めた場所から、ふいに別の思い出がつながっていく。たとえば、夕暮れの川面に映っていた橙色の雲。たとえば、遠い日の帰り道で、ポケットの中の飴玉がゆっくり溶けていったこと。たとえば、何も言わないまま隣を歩いた人の歩幅だけが、妙にあたたかく記憶に残っていること。そうした細い断片が、墨のようなやわらかな色で並び、紙のうえに静かな流れをつくっている。そこへ一匹の魚が現れて、うねうねと身をくねらせながら横切っていくたび、文字は消えるのではなく、一瞬だけ息をひそめる。
@@ -30,7 +40,9 @@ const BOOK_TEXT_SOURCE = `
 魚は飾りではない。読んでいる側の胸の奥で、まだ言葉になっていないものが形を借りて泳いでいる。行をまたぎ、段落をまたぎ、まるで心拍に合わせるように身をよじりながら進むその影は、紙の白さを揺らし、文の輪郭にわずかな空白をつくる。けれど、その空白は欠落ではなく、むしろ読めなかったはずの気配を見えるようにする余白だ。すべてを読み切るためではなく、読み切れないものと並んで座るために、この頁はここにある。眺めているうちに、言葉は景色になり、景色はまた、心の中で別の言葉へほどけていく。
 
 だからこの本では、意味は前に進むためだけに使われない。意味はときどき立ち止まり、紙のしみや掠れに触れ、余白の涼しさに目を細め、魚の尾が残した揺れを見送る。丸い文字がゆったり並ぶのは、強く主張したいからではなく、誰かの内側に静かに着地したいからだ。読み終えたあとに残るのは、結論ではなく、ほんの少し呼吸の深くなった身体かもしれない。もしこの頁が、今日のあなたの中にまだ形を持たない思いを受け止められたなら、そのときはたぶん、羊皮紙の海もまた、ひそかにあなたを読んでいたのだと思う。
-`.replace(/\s+/g, '');
+`.trim();
+
+let bookTextSource = DEFAULT_BOOK_TEXT_SOURCE;
 
 let W = 0;
 let H = 0;
@@ -46,6 +58,9 @@ let fpsAccum = 0;
 let resizeTimer = 0;
 let sceneReady = false;
 let flowTargets = [];
+let lastTextFlowUpdate = 0;
+let appInitialized = false;
+let experienceStarted = false;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -142,7 +157,12 @@ function getLineHeight(fontSize) {
 }
 
 function getTextClearance(cellWidth, lineHeight) {
-  return Math.max(10, cellWidth * 0.46 + lineHeight * 0.22);
+  return Math.max(12, (cellWidth * 0.46 + lineHeight * 0.22) * TEXT_CLEARANCE_MULTIPLIER);
+}
+
+function normalizeSourceText(source) {
+  const normalized = `${source || ''}`.replace(/\r\n?/g, '\n').trim();
+  return normalized || DEFAULT_BOOK_TEXT_SOURCE;
 }
 
 function resizeCanvas() {
@@ -291,8 +311,12 @@ function createFishMetrics(panelLayout) {
     maxSpeed: clamp(minDim * 0.16, 42, 78),
     steerForce: clamp(minDim * 0.14, 36, 84),
     historyStep: Math.max(8, segmentSpacing * 0.46),
-    waveAmplitude: clamp(minDim * 0.018, 6, 11),
-    waveSpeed: randomBetween(1.7, 2.3),
+    waveAmplitude: clamp(minDim * 0.024, 8, 15),
+    secondaryWaveAmplitude: clamp(minDim * 0.012, 4, 8),
+    waveSpeed: randomBetween(2.1, 2.8),
+    courseWaveAmplitude: randomBetween(0.16, 0.24),
+    courseWaveSecondaryAmplitude: randomBetween(0.07, 0.12),
+    courseWaveSpeed: randomBetween(0.95, 1.25),
     bodyLength: headLength + segmentSpacing * (halfWidths.length - 1) + tailLength,
     maxHalfWidth: Math.max(...halfWidths),
   };
@@ -320,7 +344,7 @@ function getSampleCellWidth() {
 function getPanelRect() {
   const outerMarginX = clamp(W * 0.045, 16, 42);
   const outerMarginY = clamp(H * 0.045, 16, 42);
-  const targetAspect = 0.62;
+  const targetAspect = A4_ASPECT_RATIO;
   const isPortrait = H > W || W < 900;
 
   let width;
@@ -372,20 +396,29 @@ function estimateFontSize(panelRect) {
   return clamp(estimated, MIN_FONT_SIZE, MAX_FONT_SIZE);
 }
 
-function buildFixedChars(source, length) {
-  const sourceChars = [...source];
-  const chars = [];
+function buildSourceLines(source, maxChars) {
+  const normalizedSource = normalizeSourceText(source);
+  const rawLines = normalizedSource.split('\n');
+  const lines = [];
+  let remaining = Math.max(0, maxChars);
+  let glyphCount = 0;
 
-  while (chars.length < length) {
-    for (const char of sourceChars) {
-      if (chars.length >= length) {
-        break;
-      }
-      chars.push(char);
+  for (const rawLine of rawLines) {
+    if (remaining <= 0) {
+      break;
     }
+
+    const chars = [...rawLine];
+    const visibleChars = chars.slice(0, remaining);
+    lines.push(visibleChars);
+    glyphCount += visibleChars.length;
+    remaining -= visibleChars.length;
   }
 
-  return chars;
+  return {
+    lines,
+    glyphCount,
+  };
 }
 
 function buildPanel() {
@@ -416,6 +449,7 @@ function buildPanel() {
   const blockedSlots = estimateBlockedSlots(fishMetrics, cellWidth, lineHeight);
   const spareSlots = Math.max(12, Math.round(slots.length * 0.06));
   const visibleTarget = Math.min(TARGET_VISIBLE_CHARS, Math.max(120, slots.length - blockedSlots - spareSlots));
+  const textContent = buildSourceLines(bookTextSource, visibleTarget);
   const rowCenters = Array.from({ length: rows }, (_, row) => offsetY + row * lineHeight + lineHeight * 0.5);
 
   return {
@@ -432,7 +466,8 @@ function buildPanel() {
     spareSlots,
     textClearance: getTextClearance(cellWidth, lineHeight),
     visibleTarget,
-    chars: buildFixedChars(BOOK_TEXT_SOURCE, visibleTarget),
+    textLines: textContent.lines,
+    textGlyphCount: textContent.glyphCount,
   };
 }
 
@@ -471,7 +506,7 @@ class SegmentedFish {
   }
 
   pickTarget() {
-    const minDistance = this.metrics.segmentSpacing * 5.5;
+    const minDistance = this.metrics.segmentSpacing * 6.2;
 
     for (let attempt = 0; attempt < 20; attempt += 1) {
       const targetX = randomBetween(this.bounds.minX, this.bounds.maxX);
@@ -564,21 +599,28 @@ class SegmentedFish {
       Math.max(0, (Math.abs(this.y - centerY) - (this.bounds.maxY - this.bounds.minY) * 0.18) / ((this.bounds.maxY - this.bounds.minY) * 0.26))
     );
     const centerBias = Math.max(horizontalBias, verticalBias);
+    const courseWaveAngle =
+      Math.sin(timestamp * 0.0011 * this.metrics.courseWaveSpeed + this.driftPhase) * this.metrics.courseWaveAmplitude +
+      Math.sin(timestamp * 0.0019 * this.metrics.courseWaveSpeed + this.wavePhase * 0.6) * this.metrics.courseWaveSecondaryAmplitude;
     const driftAngle =
-      Math.sin(timestamp * 0.00035 + this.driftPhase) * 0.22 +
-      Math.sin(timestamp * 0.00073 + this.wavePhase * 0.35) * 0.1;
-    const desiredHeading = lerp(targetAngle + driftAngle, toCenterAngle, centerBias * 0.58);
-    const turnEase = 1 - Math.exp(-dt * 3.4);
-    const desiredTurn = shortestAngleDiff(this.heading, desiredHeading) * 2.25;
+      Math.sin(timestamp * 0.00035 + this.driftPhase) * 0.16 +
+      Math.sin(timestamp * 0.00073 + this.wavePhase * 0.35) * 0.08;
+    const desiredHeading = lerp(targetAngle + driftAngle + courseWaveAngle, toCenterAngle, centerBias * 0.62);
+    const turnEase = 1 - Math.exp(-dt * 3.1);
+    const desiredTurn = shortestAngleDiff(this.heading, desiredHeading) * 2.05;
 
     this.turnVelocity = lerp(this.turnVelocity, desiredTurn, turnEase);
-    this.turnVelocity = clamp(this.turnVelocity, -1.05, 1.05);
+    this.turnVelocity = clamp(this.turnVelocity, -0.96, 0.96);
     this.heading += this.turnVelocity * dt;
 
-    const desiredSpeed = this.metrics.maxSpeed * (0.56 + 0.05 * Math.sin(timestamp * 0.00042 + this.driftPhase));
+    const desiredSpeed = this.metrics.maxSpeed * (
+      0.54 +
+      0.05 * Math.sin(timestamp * 0.00042 + this.driftPhase) +
+      0.03 * Math.sin(timestamp * 0.0012 * this.metrics.courseWaveSpeed + this.wavePhase)
+    );
     const speedEase = 1 - Math.exp(-dt * 2.2);
     this.speed = lerp(this.speed, desiredSpeed, speedEase);
-    this.speed = clamp(this.speed, this.metrics.maxSpeed * 0.46, this.metrics.maxSpeed * 0.66);
+    this.speed = clamp(this.speed, this.metrics.maxSpeed * 0.44, this.metrics.maxSpeed * 0.66);
 
     this.vx = Math.cos(this.heading) * this.speed;
     this.vy = Math.sin(this.heading) * this.speed;
@@ -613,8 +655,13 @@ class SegmentedFish {
       const behind = this.sampleHistory(along + this.metrics.historyStep);
       const tangent = normalize(ahead.x - behind.x, ahead.y - behind.y);
       const normal = { x: -tangent.y, y: tangent.x };
-      const waveStrength = Math.sin((index / (this.metrics.segmentCount - 1)) * Math.PI);
-      const waveOffset = Math.sin(timestamp * 0.0018 * this.metrics.waveSpeed - index * 0.86) * this.metrics.waveAmplitude * waveStrength;
+      const tailBias = index / Math.max(1, this.metrics.segmentCount - 1);
+      const waveStrength = 0.16 + Math.pow(tailBias, 1.35) * 0.96;
+      const primaryWave = Math.sin(timestamp * 0.0022 * this.metrics.waveSpeed - index * 0.94 + this.wavePhase * 0.85);
+      const secondaryWave = Math.sin(timestamp * 0.00145 * this.metrics.waveSpeed - index * 0.58 + this.driftPhase);
+      const waveOffset =
+        primaryWave * this.metrics.waveAmplitude * waveStrength +
+        secondaryWave * this.metrics.secondaryWaveAmplitude * (0.25 + tailBias * 0.75);
 
       const x = base.x + normal.x * waveOffset;
       const y = base.y + normal.y * waveOffset;
@@ -797,7 +844,18 @@ function rebuildScene() {
   paperTexture = createPaperTexture(panel.width, panel.height);
   fish = new SegmentedFish(panel.fishMetrics, motionBounds);
   flowTargets = [];
-  charEl.textContent = `${panel.chars.length} chars`;
+  lastTextFlowUpdate = 0;
+  updateTextFlow(performance.now(), true);
+  charEl.textContent = `${panel.textGlyphCount} chars`;
+}
+
+function renderIntroFrame() {
+  if (!panel) {
+    return;
+  }
+
+  drawBackground();
+  drawPanel();
 }
 
 function updateFps(dt) {
@@ -899,16 +957,102 @@ function selectSpanSlots(slots, count, align) {
   return slots.slice(0, count).map((slot) => ({ x: slot.x, y: slot.y }));
 }
 
+function distributeRowSlots(rowSlots, take) {
+  if (!rowSlots.length || take <= 0) {
+    return [];
+  }
+
+  const minFragment = 3;
+  const spans = splitRowIntoSpans(rowSlots);
+
+  if (spans.length <= 1) {
+    return selectSpanSlots(rowSlots, take, 'left');
+  }
+
+  const totalCapacity = spans.reduce((sum, span) => sum + span.length, 0);
+  const spanCounts = spans.map((span) => Math.round((take * span.length) / totalCapacity));
+  let allocated = spanCounts.reduce((sum, count) => sum + count, 0);
+
+  for (let index = 0; allocated > take && index < spanCounts.length; index += 1) {
+    if (spanCounts[index] > 0) {
+      spanCounts[index] -= 1;
+      allocated -= 1;
+    }
+  }
+
+  let cursor = 0;
+  let guard = 0;
+  while (allocated < take && guard < spans.length * 4) {
+    if (spanCounts[cursor] < spans[cursor].length) {
+      spanCounts[cursor] += 1;
+      allocated += 1;
+    }
+    cursor = (cursor + 1) % spans.length;
+    guard += 1;
+  }
+
+  if (spanCounts.length >= 2) {
+    const first = 0;
+    const last = spanCounts.length - 1;
+
+    if (spanCounts[first] > 0 && spanCounts[first] < minFragment && take >= minFragment) {
+      const add = Math.min(minFragment - spanCounts[first], spans[first].length - spanCounts[first]);
+      spanCounts[first] += add;
+      spanCounts[last] = Math.max(0, spanCounts[last] - add);
+    }
+
+    if (spanCounts[last] > 0 && spanCounts[last] < minFragment && take >= minFragment) {
+      const add = Math.min(minFragment - spanCounts[last], spans[last].length - spanCounts[last]);
+      spanCounts[last] += add;
+      spanCounts[first] = Math.max(0, spanCounts[first] - add);
+    }
+  }
+
+  allocated = spanCounts.reduce((sum, count) => sum + count, 0);
+  for (let index = spanCounts.length - 1; allocated > take && index >= 0; index -= 1) {
+    const removable = Math.min(spanCounts[index], allocated - take);
+    spanCounts[index] -= removable;
+    allocated -= removable;
+  }
+
+  cursor = 0;
+  guard = 0;
+  while (allocated < take && guard < spans.length * 4) {
+    if (spanCounts[cursor] < spans[cursor].length) {
+      spanCounts[cursor] += 1;
+      allocated += 1;
+    }
+    cursor = (cursor + 1) % spans.length;
+    guard += 1;
+  }
+
+  const targets = [];
+  for (let spanIndex = 0; spanIndex < spans.length; spanIndex += 1) {
+    const align = spanIndex === spans.length - 1 ? 'right' : 'left';
+    targets.push(...selectSpanSlots(spans[spanIndex], spanCounts[spanIndex], align));
+  }
+
+  return targets;
+}
+
 function getFlowTargets() {
   if (!panel || !fish) {
     return [];
   }
 
   const targets = [];
-  let charIndex = 0;
-  const minFragment = 3;
+  let lineIndex = 0;
+  let lineOffset = 0;
 
-  for (let row = 0; row < panel.rows; row += 1) {
+  for (let row = 0; row < panel.rows && lineIndex < panel.textLines.length; row += 1) {
+    const currentLine = panel.textLines[lineIndex];
+
+    if (currentLine.length === 0) {
+      lineIndex += 1;
+      lineOffset = 0;
+      continue;
+    }
+
     const rowStart = row * panel.cols;
     const rowEnd = Math.min(panel.slots.length, rowStart + panel.cols);
     const rowSlots = [];
@@ -924,99 +1068,47 @@ function getFlowTargets() {
       continue;
     }
 
-    const remainingChars = panel.chars.length - charIndex;
+    const remainingChars = currentLine.length - lineOffset;
     if (remainingChars <= 0) {
-      break;
-    }
-
-    const take = Math.min(remainingChars, rowSlots.length);
-    const spans = splitRowIntoSpans(rowSlots);
-
-    if (spans.length <= 1) {
-      targets.push(...selectSpanSlots(rowSlots, take, 'left'));
-      charIndex += take;
+      lineIndex += 1;
+      lineOffset = 0;
       continue;
     }
 
-    const totalCapacity = spans.reduce((sum, span) => sum + span.length, 0);
-    const spanCounts = spans.map((span) => Math.round((take * span.length) / totalCapacity));
-    let allocated = spanCounts.reduce((sum, count) => sum + count, 0);
+    const take = Math.min(remainingChars, rowSlots.length);
+    const rowTargets = distributeRowSlots(rowSlots, take);
 
-    for (let index = 0; allocated > take && index < spanCounts.length; index += 1) {
-      if (spanCounts[index] > 0) {
-        spanCounts[index] -= 1;
-        allocated -= 1;
-      }
+    for (let index = 0; index < rowTargets.length; index += 1) {
+      const slot = rowTargets[index];
+      targets.push({
+        x: slot.x,
+        y: slot.y,
+        char: currentLine[lineOffset + index],
+      });
     }
 
-    let cursor = 0;
-    let guard = 0;
-    while (allocated < take && guard < spans.length * 4) {
-      if (spanCounts[cursor] < spans[cursor].length) {
-        spanCounts[cursor] += 1;
-        allocated += 1;
-      }
-      cursor = (cursor + 1) % spans.length;
-      guard += 1;
+    lineOffset += take;
+    if (lineOffset >= currentLine.length) {
+      lineIndex += 1;
+      lineOffset = 0;
     }
-
-    if (spanCounts.length >= 2) {
-      const first = 0;
-      const last = spanCounts.length - 1;
-
-      if (spanCounts[first] > 0 && spanCounts[first] < minFragment && take >= minFragment) {
-        const add = Math.min(minFragment - spanCounts[first], spans[first].length - spanCounts[first]);
-        spanCounts[first] += add;
-        spanCounts[last] = Math.max(0, spanCounts[last] - add);
-      }
-
-      if (spanCounts[last] > 0 && spanCounts[last] < minFragment && take >= minFragment) {
-        const add = Math.min(minFragment - spanCounts[last], spans[last].length - spanCounts[last]);
-        spanCounts[last] += add;
-        spanCounts[first] = Math.max(0, spanCounts[first] - add);
-      }
-    }
-
-    allocated = spanCounts.reduce((sum, count) => sum + count, 0);
-    for (let index = spanCounts.length - 1; allocated > take && index >= 0; index -= 1) {
-      const removable = Math.min(spanCounts[index], allocated - take);
-      spanCounts[index] -= removable;
-      allocated -= removable;
-    }
-
-    cursor = 0;
-    guard = 0;
-    while (allocated < take && guard < spans.length * 4) {
-      if (spanCounts[cursor] < spans[cursor].length) {
-        spanCounts[cursor] += 1;
-        allocated += 1;
-      }
-      cursor = (cursor + 1) % spans.length;
-      guard += 1;
-    }
-
-    for (let spanIndex = 0; spanIndex < spans.length; spanIndex += 1) {
-      const align = spanIndex === spans.length - 1 ? 'right' : 'left';
-      targets.push(...selectSpanSlots(spans[spanIndex], spanCounts[spanIndex], align));
-    }
-
-    charIndex += take;
   }
 
   return targets;
 }
 
-function updateTextFlow() {
+function updateTextFlow(timestamp, force = false) {
   if (!panel || !fish) {
     return;
   }
 
-  const targets = getFlowTargets();
-  if (!targets.length) {
+  if (!force && timestamp - lastTextFlowUpdate < TEXT_FLOW_INTERVAL_MS) {
     return;
   }
 
+  const targets = getFlowTargets();
   flowTargets = targets;
+  lastTextFlowUpdate = timestamp;
 }
 
 function drawText() {
@@ -1026,11 +1118,9 @@ function drawText() {
 
   ctx.fillStyle = TEXT_COLOR;
   ctx.font = createFont(panel.fontSize);
-  const count = Math.min(panel.chars.length, flowTargets.length);
 
-  for (let index = 0; index < count; index += 1) {
-    const slot = flowTargets[index];
-    ctx.fillText(panel.chars[index], slot.x, slot.y);
+  for (const slot of flowTargets) {
+    ctx.fillText(slot.char, slot.x, slot.y);
   }
 }
 
@@ -1045,17 +1135,50 @@ function loop(timestamp) {
   lastTime = timestamp;
   updateFps(dt);
   fish.update(dt, timestamp);
-  updateTextFlow();
+  updateTextFlow(timestamp);
   drawBackground();
   drawPanel();
   drawText();
   fish.draw(ctx);
 }
 
+function setInputModalOpen(isOpen) {
+  textModalEl.hidden = !isOpen;
+  toggleInputButton.setAttribute('aria-expanded', String(isOpen));
+  document.body.classList.toggle('is-modal-open', isOpen);
+
+  if (isOpen) {
+    textInputEl.focus();
+    const cursor = textInputEl.value.length;
+    textInputEl.setSelectionRange(cursor, cursor);
+  } else {
+    toggleInputButton.focus();
+  }
+}
+
+function startExperience() {
+  if (!appInitialized || experienceStarted) {
+    return;
+  }
+
+  experienceStarted = true;
+  setInputModalOpen(false);
+  bookTextSource = normalizeSourceText(textInputEl.value);
+  rebuildScene();
+  sceneReady = true;
+  startScreenEl.classList.add('is-hidden');
+  document.body.classList.add('is-running');
+  lastTime = performance.now();
+  requestAnimationFrame(loop);
+}
+
 function scheduleRebuild() {
   window.clearTimeout(resizeTimer);
   resizeTimer = window.setTimeout(() => {
     rebuildScene();
+    if (!sceneReady) {
+      renderIntroFrame();
+    }
     lastTime = performance.now();
   }, RESIZE_DEBOUNCE_MS);
 }
@@ -1079,11 +1202,36 @@ async function waitForPrimaryFont() {
 }
 
 window.addEventListener('resize', scheduleRebuild);
+toggleInputButton.addEventListener('click', () => {
+  setInputModalOpen(true);
+});
+closeInputButton.addEventListener('click', () => {
+  setInputModalOpen(false);
+});
+applyInputButton.addEventListener('click', () => {
+  setInputModalOpen(false);
+});
+textModalEl.addEventListener('click', (event) => {
+  if (event.target.hasAttribute('data-close-input-modal')) {
+    setInputModalOpen(false);
+  }
+});
+startButton.addEventListener('click', startExperience);
+textInputEl.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    setInputModalOpen(false);
+    return;
+  }
+
+  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+    startExperience();
+  }
+});
 
 (async () => {
   await waitForPrimaryFont();
   rebuildScene();
-  sceneReady = true;
-  lastTime = performance.now();
-  requestAnimationFrame(loop);
+  renderIntroFrame();
+  startButton.disabled = false;
+  appInitialized = true;
 })();

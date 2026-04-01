@@ -9,6 +9,12 @@
   --text: rgba(47, 34, 23, 0.88);
   --badge-bg: rgba(246, 233, 204, 0.82);
   --badge-border: rgba(116, 84, 49, 0.26);
+  --overlay: rgba(24, 17, 12, 0.36);
+  --card-bg: rgba(246, 236, 213, 0.9);
+  --card-border: rgba(108, 77, 44, 0.22);
+  --button-fill: #5d4330;
+  --button-fill-strong: #432d1f;
+  --button-line: rgba(124, 91, 55, 0.22);
 }
 
 html, body {
@@ -34,6 +40,207 @@ body {
   height: 100%;
 }
 
+#start-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: clamp(20px, 4vw, 48px);
+  background:
+    linear-gradient(180deg, rgba(28, 20, 13, 0.18), rgba(21, 14, 10, 0.5)),
+    radial-gradient(circle at top, rgba(255, 232, 192, 0.08), transparent 38%);
+  transition: opacity 240ms ease, visibility 240ms ease;
+}
+
+#start-screen.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.start-card {
+  width: min(720px, 100%);
+  padding: clamp(24px, 4.8vw, 42px);
+  border: 1px solid var(--card-border);
+  border-radius: 28px;
+  background:
+    linear-gradient(180deg, rgba(255, 249, 237, 0.86), rgba(241, 226, 196, 0.94)),
+    var(--card-bg);
+  box-shadow:
+    0 28px 72px rgba(18, 12, 9, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.38);
+  backdrop-filter: blur(18px);
+}
+
+.start-eyebrow {
+  margin-bottom: 12px;
+  font-family: 'M PLUS 1 Code', monospace;
+  font-size: 12px;
+  letter-spacing: 0.24em;
+  color: rgba(99, 72, 45, 0.72);
+}
+
+.start-title {
+  max-width: 10em;
+  font-size: clamp(30px, 5vw, 52px);
+  line-height: 1.18;
+  color: rgba(44, 30, 19, 0.94);
+}
+
+.start-description {
+  margin-top: 16px;
+  max-width: 34em;
+  font-size: clamp(14px, 2vw, 17px);
+  line-height: 1.9;
+  color: rgba(77, 56, 36, 0.82);
+}
+
+.start-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.start-button {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 12px 22px;
+  font: 400 15px/1 'Kiwi Maru', 'Hiragino Maru Gothic ProN', 'Yu Gothic', sans-serif;
+  cursor: pointer;
+  transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease, border-color 180ms ease;
+}
+
+.start-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.start-button.primary {
+  color: #fffdf7;
+  background: linear-gradient(180deg, var(--button-fill), var(--button-fill-strong));
+  box-shadow: 0 12px 26px rgba(46, 31, 20, 0.22);
+}
+
+.start-button.secondary {
+  color: rgba(73, 52, 34, 0.92);
+  border-color: var(--button-line);
+  background: rgba(255, 250, 241, 0.72);
+}
+
+.start-button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+  transform: none;
+  box-shadow: none;
+}
+
+.text-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: clamp(16px, 4vw, 40px);
+}
+
+.text-modal[hidden] {
+  display: none;
+}
+
+.text-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(19, 13, 9, 0.44);
+  backdrop-filter: blur(10px);
+}
+
+.text-modal-card {
+  position: relative;
+  width: min(760px, 100%);
+  display: grid;
+  gap: 12px;
+  padding: clamp(22px, 4vw, 34px);
+  border: 1px solid rgba(111, 80, 47, 0.18);
+  border-radius: 26px;
+  background:
+    linear-gradient(180deg, rgba(255, 250, 240, 0.94), rgba(241, 226, 196, 0.96)),
+    #f5ead1;
+  box-shadow:
+    0 30px 70px rgba(12, 9, 7, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42);
+}
+
+.text-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.text-modal-eyebrow,
+.text-modal-label {
+  font-family: 'M PLUS 1 Code', monospace;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  color: rgba(99, 72, 45, 0.72);
+}
+
+.text-modal-title {
+  font-size: clamp(24px, 3.6vw, 36px);
+  line-height: 1.25;
+  color: rgba(44, 30, 19, 0.94);
+}
+
+.text-modal-description {
+  max-width: 38em;
+  font-size: 14px;
+  line-height: 1.85;
+  color: rgba(77, 56, 36, 0.82);
+}
+
+.text-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.icon-button {
+  appearance: none;
+  border: 1px solid rgba(118, 86, 52, 0.18);
+  border-radius: 999px;
+  padding: 9px 14px;
+  background: rgba(255, 250, 241, 0.72);
+  color: rgba(73, 52, 34, 0.92);
+  font: 400 13px/1 'Kiwi Maru', 'Hiragino Maru Gothic ProN', 'Yu Gothic', sans-serif;
+  cursor: pointer;
+}
+
+#source-text {
+  width: 100%;
+  min-height: clamp(220px, 38vh, 380px);
+  resize: vertical;
+  border: 1px solid rgba(123, 90, 53, 0.16);
+  border-radius: 18px;
+  padding: 16px 18px;
+  background: rgba(255, 251, 243, 0.96);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  font: 300 16px/1.9 'Kiwi Maru', 'Hiragino Maru Gothic ProN', 'Yu Gothic', sans-serif;
+  color: rgba(54, 38, 25, 0.92);
+}
+
+#source-text:focus {
+  outline: 2px solid rgba(94, 67, 48, 0.24);
+  outline-offset: 3px;
+}
+
+.editor-note {
+  font-size: 13px;
+  line-height: 1.7;
+  color: rgba(92, 68, 46, 0.72);
+}
+
 #info-badge {
   position: fixed;
   right: 16px;
@@ -51,4 +258,49 @@ body {
   font-size: 12px;
   color: rgba(70, 50, 31, 0.76);
   user-select: none;
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+body.is-running #info-badge {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (max-width: 640px) {
+  .start-card {
+    border-radius: 24px;
+  }
+
+  .start-title {
+    max-width: none;
+  }
+
+  .start-actions {
+    flex-direction: column;
+  }
+
+  .start-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .text-modal-card {
+    border-radius: 22px;
+  }
+
+  .text-modal-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .text-modal-actions {
+    justify-content: stretch;
+  }
+
+  .icon-button {
+    width: 100%;
+  }
 }
