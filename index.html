@@ -59,37 +59,114 @@
         >
           テキスト入力
         </button>
+        <button
+          id="toggle-config-button"
+          class="start-button secondary"
+          type="button"
+          aria-expanded="false"
+          aria-controls="config-modal"
+        >
+          コンフィグ
+        </button>
         <button id="start-button" class="start-button primary" type="button" disabled>スタート</button>
       </div>
     </section>
   </div>
-  <div id="text-modal" class="text-modal" hidden>
-    <div class="text-modal-backdrop" data-close-input-modal></div>
+  <div id="text-modal" class="app-modal" hidden>
+    <div class="app-modal-backdrop" data-close-input-modal></div>
     <section
-      class="text-modal-card"
+      class="app-modal-card"
       role="dialog"
       aria-modal="true"
       aria-labelledby="text-modal-title"
     >
-      <div class="text-modal-header">
-        <p class="text-modal-eyebrow">TEXT INPUT</p>
+      <div class="app-modal-header">
+        <p class="app-modal-eyebrow">TEXT INPUT</p>
         <button id="close-input-button" class="icon-button" type="button" aria-label="入力画面を閉じる">閉じる</button>
       </div>
-      <h2 id="text-modal-title" class="text-modal-title">表示したい文章を入力</h2>
-      <p class="text-modal-description">
+      <h2 id="text-modal-title" class="app-modal-title">表示したい文章を入力</h2>
+      <p class="app-modal-description">
         コピペでも直接入力でも使えます。改行はそのまま表示に反映され、文字数が少ないときは入力分だけ表示します。
       </p>
-      <label class="text-modal-label" for="source-text">テキスト</label>
+      <label class="app-modal-label" for="source-text">テキスト</label>
       <textarea
         id="source-text"
         spellcheck="false"
         placeholder="ここにテキストをコピペ、または入力します。"
       ></textarea>
-      <div class="text-modal-actions">
+      <div class="app-modal-actions">
         <button id="apply-input-button" class="start-button secondary" type="button">入力を閉じる</button>
       </div>
       <p class="editor-note">
         空欄のままなら既定テキストで開始します。
+      </p>
+    </section>
+  </div>
+  <div id="config-modal" class="app-modal" hidden>
+    <div class="app-modal-backdrop" data-close-config-modal></div>
+    <section
+      class="app-modal-card config-modal-card"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="config-modal-title"
+    >
+      <div class="app-modal-header">
+        <p class="app-modal-eyebrow">CONFIG</p>
+        <button id="close-config-button" class="icon-button" type="button" aria-label="設定画面を閉じる">閉じる</button>
+      </div>
+      <h2 id="config-modal-title" class="app-modal-title">表示設定</h2>
+      <p class="app-modal-description">
+        文字の見た目と更新テンポ、背景色を調整できます。適用するとスタート前のプレビューにも反映します。
+      </p>
+      <form id="config-form" class="config-form">
+        <div class="config-grid">
+          <label class="config-field" for="font-size-input">
+            <span class="config-field-head">
+              <span class="app-modal-label">文字の大きさ</span>
+              <span id="font-size-value" class="config-value">18 px</span>
+            </span>
+            <input id="font-size-input" class="config-range" type="range" min="14" max="24" step="1" value="18" />
+          </label>
+          <label class="config-field" for="text-color-input">
+            <span class="config-field-head">
+              <span class="app-modal-label">文字の色</span>
+              <span id="text-color-value" class="config-value">#2A1E15</span>
+            </span>
+            <input id="text-color-input" class="config-color" type="color" value="#2A1E15" />
+          </label>
+          <label class="config-field" for="font-family-input">
+            <span class="config-field-head">
+              <span class="app-modal-label">文字のフォント種別</span>
+            </span>
+            <select id="font-family-input" class="config-select">
+              <option value="kiwi-maru">Kiwi Maru</option>
+              <option value="yu-gothic">Yu Gothic</option>
+              <option value="m-plus-code">M PLUS 1 Code</option>
+            </select>
+          </label>
+          <label class="config-field" for="text-interval-input">
+            <span class="config-field-head">
+              <span class="app-modal-label">文字の更新間隔</span>
+              <span id="text-interval-value" class="config-value">100 ms</span>
+            </span>
+            <input id="text-interval-input" class="config-range" type="range" min="50" max="250" step="10" value="100" />
+          </label>
+          <label class="config-field" for="background-color-input">
+            <span class="config-field-head">
+              <span class="app-modal-label">背景の色</span>
+              <span id="background-color-value" class="config-value">#201914</span>
+            </span>
+            <input id="background-color-input" class="config-color" type="color" value="#201914" />
+          </label>
+        </div>
+      </form>
+      <div class="app-modal-actions config-actions">
+        <button id="reset-config-button" class="start-button secondary" type="button">リセット</button>
+        <button id="cancel-config-button" class="start-button secondary" type="button">キャンセル</button>
+        <button id="apply-config-button" class="start-button primary" type="button">適用</button>
+      </div>
+      <p class="editor-note">
+        適用した設定はこのブラウザに保存され、次回起動時にも引き継がれます。
       </p>
     </section>
   </div>

@@ -4,27 +4,66 @@ const fpsEl = document.getElementById('fps-counter');
 const charEl = document.getElementById('char-count');
 const startScreenEl = document.getElementById('start-screen');
 const toggleInputButton = document.getElementById('toggle-input-button');
+const toggleConfigButton = document.getElementById('toggle-config-button');
 const startButton = document.getElementById('start-button');
 const textModalEl = document.getElementById('text-modal');
 const closeInputButton = document.getElementById('close-input-button');
 const applyInputButton = document.getElementById('apply-input-button');
 const textInputEl = document.getElementById('source-text');
+const configModalEl = document.getElementById('config-modal');
+const closeConfigButton = document.getElementById('close-config-button');
+const cancelConfigButton = document.getElementById('cancel-config-button');
+const applyConfigButton = document.getElementById('apply-config-button');
+const resetConfigButton = document.getElementById('reset-config-button');
+const configFormEl = document.getElementById('config-form');
+const fontSizeInputEl = document.getElementById('font-size-input');
+const fontSizeValueEl = document.getElementById('font-size-value');
+const textColorInputEl = document.getElementById('text-color-input');
+const textColorValueEl = document.getElementById('text-color-value');
+const fontFamilyInputEl = document.getElementById('font-family-input');
+const textIntervalInputEl = document.getElementById('text-interval-input');
+const textIntervalValueEl = document.getElementById('text-interval-value');
+const backgroundColorInputEl = document.getElementById('background-color-input');
+const backgroundColorValueEl = document.getElementById('background-color-value');
 
-const PRIMARY_FONT_NAME = 'Kiwi Maru';
-const FONT_FAMILY = `"${PRIMARY_FONT_NAME}", "Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif`;
 const MIN_FONT_SIZE = 14;
-const MAX_FONT_SIZE = 22;
+const MAX_FONT_SIZE = 24;
 const LINE_HEIGHT_RATIO = 1.72;
 const CJK_WIDTH_RATIO = 1.28;
 const TARGET_VISIBLE_CHARS = 600;
 const A4_ASPECT_RATIO = 1 / Math.sqrt(2);
-const TEXT_FLOW_INTERVAL_MS = 100;
+const MIN_TEXT_FLOW_INTERVAL_MS = 50;
+const MAX_TEXT_FLOW_INTERVAL_MS = 250;
 const TEXT_CLEARANCE_MULTIPLIER = 1.18;
 const FONT_LOAD_TIMEOUT_MS = 3000;
 const RESIZE_DEBOUNCE_MS = 180;
+const SETTINGS_STORAGE_KEY = 'motion-book.settings.v1';
 const LAYOUT_SAMPLES = ['あ', '海', '頁', '魚', '羊', '紙', 'う', 'ね', '書', '読', '語', '灯', '余', '白'];
+const FONT_OPTIONS = Object.freeze({
+  'kiwi-maru': {
+    label: 'Kiwi Maru',
+    loadName: 'Kiwi Maru',
+    stack: '"Kiwi Maru", "Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif',
+  },
+  'yu-gothic': {
+    label: 'Yu Gothic',
+    loadName: 'Yu Gothic',
+    stack: '"Yu Gothic", "Hiragino Kaku Gothic ProN", sans-serif',
+  },
+  'm-plus-code': {
+    label: 'M PLUS 1 Code',
+    loadName: 'M PLUS 1 Code',
+    stack: '"M PLUS 1 Code", "Hiragino Sans", "Yu Gothic", monospace',
+  },
+});
+const DEFAULT_SETTINGS = Object.freeze({
+  fontSizePx: 18,
+  textColor: '#2a1e15',
+  fontFamily: 'kiwi-maru',
+  textFlowIntervalMs: 100,
+  backgroundColor: '#201914',
+});
 
-const TEXT_COLOR = 'rgba(42, 30, 21, 0.88)';
 const PANEL_BORDER = 'rgba(126, 92, 53, 0.34)';
 const PANEL_SHADOW = 'rgba(45, 29, 17, 0.28)';
 const FISH_FILL = 'rgba(82, 97, 126, 0.34)';
@@ -47,6 +86,7 @@ const DEFAULT_BOOK_TEXT_SOURCE = `
 だからこの本では、意味は前に進むためだけに使われない。意味はときどき立ち止まり、紙のしみや掠れに触れ、余白の涼しさに目を細め、魚の尾が残した揺れを見送る。丸い文字がゆったり並ぶのは、強く主張したいからではなく、誰かの内側に静かに着地したいからだ。読み終えたあとに残るのは、結論ではなく、ほんの少し呼吸の深くなった身体かもしれない。もしこの頁が、今日のあなたの中にまだ形を持たない思いを受け止められたなら、そのときはたぶん、羊皮紙の海もまた、ひそかにあなたを読んでいたのだと思う。
 `.trim();
 
+let settings = loadSettings();
 let bookTextSource = DEFAULT_BOOK_TEXT_SOURCE;
 
 let W = 0;
@@ -407,7 +447,7 @@ function traceSmoothLine(context, points) {
 }
 
 function createFont(fontSize) {
-  return `300 ${fontSize}px ${FONT_FAMILY}`;
+  return `300 ${fontSize}px ${getFontStack()}`;
 }
 
 function getLineHeight(fontSize) {
@@ -421,6 +461,137 @@ function getTextClearance(cellWidth, lineHeight) {
 function normalizeSourceText(source) {
   const normalized = `${source || ''}`.replace(/\r\n?/g, '\n').trim();
   return normalized || DEFAULT_BOOK_TEXT_SOURCE;
+}
+
+function normalizeHexColor(value, fallback) {
+  const fallbackValue = `${fallback || '#000000'}`.toLowerCase();
+  const raw = `${value || ''}`.trim();
+
+  if (/^#[0-9a-f]{6}$/i.test(raw)) {
+    return raw.toLowerCase();
+  }
+
+  if (/^#[0-9a-f]{3}$/i.test(raw)) {
+    const expanded = raw
+      .slice(1)
+      .split('')
+      .map((char) => `${char}${char}`)
+      .join('');
+    return `#${expanded}`.toLowerCase();
+  }
+
+  return fallbackValue;
+}
+
+function hexToRgb(hexColor) {
+  const normalized = normalizeHexColor(hexColor, '#000000');
+  const value = normalized.slice(1);
+  return {
+    r: Number.parseInt(value.slice(0, 2), 16),
+    g: Number.parseInt(value.slice(2, 4), 16),
+    b: Number.parseInt(value.slice(4, 6), 16),
+  };
+}
+
+function mixRgb(color, target, amount) {
+  return {
+    r: Math.round(lerp(color.r, target.r, amount)),
+    g: Math.round(lerp(color.g, target.g, amount)),
+    b: Math.round(lerp(color.b, target.b, amount)),
+  };
+}
+
+function rgbToCss(color, alpha = 1) {
+  if (alpha >= 1) {
+    return `rgb(${color.r}, ${color.g}, ${color.b})`;
+  }
+
+  return `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`;
+}
+
+function getFontOption(fontKey = settings.fontFamily) {
+  return FONT_OPTIONS[fontKey] || FONT_OPTIONS[DEFAULT_SETTINGS.fontFamily];
+}
+
+function getFontStack(fontKey = settings.fontFamily) {
+  return getFontOption(fontKey).stack;
+}
+
+function sanitizeSettings(candidate = {}) {
+  const fontSizePx = clamp(
+    Math.round(Number(candidate.fontSizePx) || DEFAULT_SETTINGS.fontSizePx),
+    MIN_FONT_SIZE,
+    MAX_FONT_SIZE
+  );
+  const intervalBase = Math.round(Number(candidate.textFlowIntervalMs) || DEFAULT_SETTINGS.textFlowIntervalMs);
+  const textFlowIntervalMs = clamp(
+    Math.round(intervalBase / 10) * 10,
+    MIN_TEXT_FLOW_INTERVAL_MS,
+    MAX_TEXT_FLOW_INTERVAL_MS
+  );
+  const fontFamily = FONT_OPTIONS[candidate.fontFamily] ? candidate.fontFamily : DEFAULT_SETTINGS.fontFamily;
+
+  return {
+    fontSizePx,
+    textColor: normalizeHexColor(candidate.textColor, DEFAULT_SETTINGS.textColor),
+    fontFamily,
+    textFlowIntervalMs,
+    backgroundColor: normalizeHexColor(candidate.backgroundColor, DEFAULT_SETTINGS.backgroundColor),
+  };
+}
+
+function loadSettings() {
+  try {
+    const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) {
+      return { ...DEFAULT_SETTINGS };
+    }
+    return sanitizeSettings(JSON.parse(raw));
+  } catch (error) {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+function saveSettings(nextSettings) {
+  try {
+    window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(sanitizeSettings(nextSettings)));
+  } catch (error) {
+    return;
+  }
+}
+
+function updateConfigValueLabels() {
+  fontSizeValueEl.textContent = `${fontSizeInputEl.value} px`;
+  textColorValueEl.textContent = normalizeHexColor(textColorInputEl.value, DEFAULT_SETTINGS.textColor).toUpperCase();
+  textIntervalValueEl.textContent = `${textIntervalInputEl.value} ms`;
+  backgroundColorValueEl.textContent = normalizeHexColor(
+    backgroundColorInputEl.value,
+    DEFAULT_SETTINGS.backgroundColor
+  ).toUpperCase();
+}
+
+function populateConfigForm(nextSettings = settings) {
+  const safeSettings = sanitizeSettings(nextSettings);
+  fontSizeInputEl.value = String(safeSettings.fontSizePx);
+  textColorInputEl.value = safeSettings.textColor;
+  fontFamilyInputEl.value = safeSettings.fontFamily;
+  textIntervalInputEl.value = String(safeSettings.textFlowIntervalMs);
+  backgroundColorInputEl.value = safeSettings.backgroundColor;
+  updateConfigValueLabels();
+}
+
+function readConfigForm() {
+  return sanitizeSettings({
+    fontSizePx: Number(fontSizeInputEl.value),
+    textColor: textColorInputEl.value,
+    fontFamily: fontFamilyInputEl.value,
+    textFlowIntervalMs: Number(textIntervalInputEl.value),
+    backgroundColor: backgroundColorInputEl.value,
+  });
+}
+
+function syncCssSettings() {
+  document.documentElement.style.setProperty('--bg', settings.backgroundColor);
 }
 
 function resizeCanvas() {
@@ -455,11 +626,17 @@ function createBackdropTexture(width, height) {
   offscreen.width = Math.max(1, Math.floor(width));
   offscreen.height = Math.max(1, Math.floor(height));
   const offCtx = offscreen.getContext('2d');
+  const baseColor = hexToRgb(settings.backgroundColor);
+  const topColor = mixRgb(baseColor, { r: 255, g: 224, b: 188 }, 0.18);
+  const middleColor = mixRgb(baseColor, { r: 0, g: 0, b: 0 }, 0.12);
+  const bottomColor = mixRgb(baseColor, { r: 0, g: 0, b: 0 }, 0.36);
+  const glowColor = mixRgb(baseColor, { r: 255, g: 232, b: 194 }, 0.72);
+  const stainColor = mixRgb(baseColor, { r: 255, g: 224, b: 174 }, 0.6);
 
   const gradient = offCtx.createLinearGradient(0, 0, width, height);
-  gradient.addColorStop(0, '#4a382a');
-  gradient.addColorStop(0.45, '#2e241c');
-  gradient.addColorStop(1, '#171311');
+  gradient.addColorStop(0, rgbToCss(topColor));
+  gradient.addColorStop(0.45, rgbToCss(middleColor));
+  gradient.addColorStop(1, rgbToCss(bottomColor));
   offCtx.fillStyle = gradient;
   offCtx.fillRect(0, 0, width, height);
 
@@ -471,7 +648,7 @@ function createBackdropTexture(width, height) {
     height * 0.42,
     Math.max(width, height) * 0.76
   );
-  glow.addColorStop(0, 'rgba(255, 232, 194, 0.12)');
+  glow.addColorStop(0, rgbToCss(glowColor, 0.12));
   glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
   offCtx.fillStyle = glow;
   offCtx.fillRect(0, 0, width, height);
@@ -483,7 +660,7 @@ function createBackdropTexture(width, height) {
     const x = randomBetween(-radius, width + radius);
     const y = randomBetween(-radius, height + radius);
     const stain = offCtx.createRadialGradient(x, y, 0, x, y, radius);
-    stain.addColorStop(0, 'rgba(255, 224, 174, 0.06)');
+    stain.addColorStop(0, rgbToCss(stainColor, 0.06));
     stain.addColorStop(1, 'rgba(0, 0, 0, 0)');
     offCtx.fillStyle = stain;
     offCtx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
@@ -763,7 +940,7 @@ function buildSourceLines(source, maxChars) {
 
 function buildPanel() {
   const panelRect = getPanelRect();
-  const fontSize = estimateFontSize(panelRect);
+  const fontSize = clamp(settings.fontSizePx, MIN_FONT_SIZE, MAX_FONT_SIZE);
   const lineHeight = getLineHeight(fontSize);
   ctx.font = createFont(fontSize);
 
@@ -1358,12 +1535,14 @@ function rebuildScene() {
 }
 
 function renderIntroFrame() {
-  if (!panel) {
+  if (!panel || !character) {
     return;
   }
 
   drawBackground();
   drawPanel();
+  drawText();
+  character.draw(ctx);
 }
 
 function updateFps(dt) {
@@ -1378,7 +1557,7 @@ function updateFps(dt) {
 }
 
 function drawBackground() {
-  ctx.fillStyle = '#201914';
+  ctx.fillStyle = settings.backgroundColor;
   ctx.fillRect(0, 0, W, H);
 
   if (backdropTexture) {
@@ -1610,7 +1789,7 @@ function updateTextFlow(timestamp, force = false) {
     return;
   }
 
-  if (!force && timestamp - lastTextFlowUpdate < TEXT_FLOW_INTERVAL_MS) {
+  if (!force && timestamp - lastTextFlowUpdate < settings.textFlowIntervalMs) {
     return;
   }
 
@@ -1624,7 +1803,7 @@ function drawText() {
     return;
   }
 
-  ctx.fillStyle = TEXT_COLOR;
+  ctx.fillStyle = settings.textColor;
   ctx.font = createFont(panel.fontSize);
 
   for (const slot of flowTargets) {
@@ -1650,18 +1829,86 @@ function loop(timestamp) {
   character.draw(ctx);
 }
 
-function setInputModalOpen(isOpen) {
+function syncModalState() {
+  const isOpen = !textModalEl.hidden || !configModalEl.hidden;
+  document.body.classList.toggle('is-modal-open', isOpen);
+}
+
+function setInputModalOpen(isOpen, options = {}) {
+  const { restoreFocus = true } = options;
+
+  if (isOpen) {
+    setConfigModalOpen(false, { restoreFocus: false });
+  }
+
   textModalEl.hidden = !isOpen;
   toggleInputButton.setAttribute('aria-expanded', String(isOpen));
-  document.body.classList.toggle('is-modal-open', isOpen);
+  syncModalState();
 
   if (isOpen) {
     textInputEl.focus();
     const cursor = textInputEl.value.length;
     textInputEl.setSelectionRange(cursor, cursor);
-  } else {
+  } else if (restoreFocus) {
     toggleInputButton.focus();
   }
+}
+
+function setConfigModalOpen(isOpen, options = {}) {
+  const { restoreFocus = true } = options;
+
+  if (isOpen) {
+    setInputModalOpen(false, { restoreFocus: false });
+    populateConfigForm(settings);
+  }
+
+  configModalEl.hidden = !isOpen;
+  toggleConfigButton.setAttribute('aria-expanded', String(isOpen));
+  syncModalState();
+
+  if (isOpen) {
+    fontSizeInputEl.focus();
+  } else if (restoreFocus) {
+    toggleConfigButton.focus();
+  }
+}
+
+async function ensureFontLoaded(fontKey = settings.fontFamily) {
+  if (!document.fonts || !document.fonts.load) {
+    return;
+  }
+
+  const fontOption = getFontOption(fontKey);
+  const timeout = new Promise((resolve) => {
+    window.setTimeout(resolve, FONT_LOAD_TIMEOUT_MS);
+  });
+
+  await Promise.race([
+    Promise.all([
+      document.fonts.load(`300 20px "${fontOption.loadName}"`),
+      document.fonts.ready,
+    ]),
+    timeout,
+  ]);
+}
+
+function refreshScene() {
+  rebuildScene();
+  if (!sceneReady) {
+    renderIntroFrame();
+    return;
+  }
+  lastTime = performance.now();
+}
+
+async function applyConfigSettings() {
+  const nextSettings = readConfigForm();
+  settings = nextSettings;
+  saveSettings(settings);
+  syncCssSettings();
+  await ensureFontLoaded(settings.fontFamily);
+  refreshScene();
+  setConfigModalOpen(false);
 }
 
 function startExperience() {
@@ -1670,7 +1917,8 @@ function startExperience() {
   }
 
   experienceStarted = true;
-  setInputModalOpen(false);
+  setInputModalOpen(false, { restoreFocus: false });
+  setConfigModalOpen(false, { restoreFocus: false });
   const checkedRadio = document.querySelector('input[name="character"]:checked');
   selectedCharacter = checkedRadio ? checkedRadio.value : 'fish';
   bookTextSource = normalizeSourceText(textInputEl.value);
@@ -1693,27 +1941,12 @@ function scheduleRebuild() {
   }, RESIZE_DEBOUNCE_MS);
 }
 
-async function waitForPrimaryFont() {
-  if (!document.fonts || !document.fonts.load) {
-    return;
-  }
-
-  const timeout = new Promise((resolve) => {
-    window.setTimeout(resolve, FONT_LOAD_TIMEOUT_MS);
-  });
-
-  await Promise.race([
-    Promise.all([
-      document.fonts.load(`300 20px "${PRIMARY_FONT_NAME}"`),
-      document.fonts.ready,
-    ]),
-    timeout,
-  ]);
-}
-
 window.addEventListener('resize', scheduleRebuild);
 toggleInputButton.addEventListener('click', () => {
   setInputModalOpen(true);
+});
+toggleConfigButton.addEventListener('click', () => {
+  setConfigModalOpen(true);
 });
 closeInputButton.addEventListener('click', () => {
   setInputModalOpen(false);
@@ -1721,21 +1954,62 @@ closeInputButton.addEventListener('click', () => {
 applyInputButton.addEventListener('click', () => {
   setInputModalOpen(false);
 });
+closeConfigButton.addEventListener('click', () => {
+  setConfigModalOpen(false);
+});
+cancelConfigButton.addEventListener('click', () => {
+  setConfigModalOpen(false);
+});
+resetConfigButton.addEventListener('click', () => {
+  populateConfigForm(DEFAULT_SETTINGS);
+});
+applyConfigButton.addEventListener('click', async () => {
+  await applyConfigSettings();
+});
 textModalEl.addEventListener('click', (event) => {
   if (event.target.hasAttribute('data-close-input-modal')) {
     setInputModalOpen(false);
   }
 });
+configModalEl.addEventListener('click', (event) => {
+  if (event.target.hasAttribute('data-close-config-modal')) {
+    setConfigModalOpen(false);
+  }
+});
 startButton.addEventListener('click', startExperience);
-textInputEl.addEventListener('keydown', (event) => {
+textModalEl.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
+    event.preventDefault();
     setInputModalOpen(false);
     return;
   }
 
   if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+    event.preventDefault();
     startExperience();
   }
+});
+configModalEl.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    setConfigModalOpen(false);
+  }
+});
+configFormEl.addEventListener('submit', (event) => {
+  event.preventDefault();
+});
+fontSizeInputEl.addEventListener('input', updateConfigValueLabels);
+textColorInputEl.addEventListener('input', updateConfigValueLabels);
+textIntervalInputEl.addEventListener('input', updateConfigValueLabels);
+backgroundColorInputEl.addEventListener('input', updateConfigValueLabels);
+document.querySelectorAll('input[name="character"]').forEach((radio) => {
+  radio.addEventListener('change', (event) => {
+    if (experienceStarted || !event.target.checked) {
+      return;
+    }
+    selectedCharacter = event.target.value;
+    refreshScene();
+  });
 });
 
 function drawCharacterPreviews() {
@@ -1815,7 +2089,11 @@ function drawCharacterPreviews() {
 }
 
 (async () => {
-  await waitForPrimaryFont();
+  populateConfigForm(settings);
+  syncCssSettings();
+  const checkedRadio = document.querySelector('input[name="character"]:checked');
+  selectedCharacter = checkedRadio ? checkedRadio.value : selectedCharacter;
+  await ensureFontLoaded(settings.fontFamily);
   rebuildScene();
   renderIntroFrame();
   drawCharacterPreviews();
