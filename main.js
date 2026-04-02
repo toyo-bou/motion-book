@@ -1,5 +1,6 @@
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
+const backButtonEl = document.getElementById('back-button');
 const fpsEl = document.getElementById('fps-counter');
 const charEl = document.getElementById('char-count');
 const startScreenEl = document.getElementById('start-screen');
@@ -23,8 +24,8 @@ const textColorValueEl = document.getElementById('text-color-value');
 const fontFamilyInputEl = document.getElementById('font-family-input');
 const textIntervalInputEl = document.getElementById('text-interval-input');
 const textIntervalValueEl = document.getElementById('text-interval-value');
-const backgroundColorInputEl = document.getElementById('background-color-input');
-const backgroundColorValueEl = document.getElementById('background-color-value');
+const paperColorInputEl = document.getElementById('paper-color-input');
+const paperColorValueEl = document.getElementById('paper-color-value');
 
 const MIN_FONT_SIZE = 14;
 const MAX_FONT_SIZE = 24;
@@ -39,6 +40,7 @@ const FONT_LOAD_TIMEOUT_MS = 3000;
 const RESIZE_DEBOUNCE_MS = 180;
 const SETTINGS_STORAGE_KEY = 'motion-book.settings.v1';
 const LAYOUT_SAMPLES = ['あ', '海', '頁', '魚', '羊', '紙', 'う', 'ね', '書', '読', '語', '灯', '余', '白'];
+const SCENE_BACKGROUND_COLOR = '#1a1a2e';
 const FONT_OPTIONS = Object.freeze({
   'kiwi-maru': {
     label: 'Kiwi Maru',
@@ -55,36 +57,50 @@ const FONT_OPTIONS = Object.freeze({
     loadName: 'M PLUS 1 Code',
     stack: '"M PLUS 1 Code", "Hiragino Sans", "Yu Gothic", monospace',
   },
+  'shippori-mincho': {
+    label: 'Shippori Mincho',
+    loadName: 'Shippori Mincho',
+    stack: '"Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif',
+  },
 });
 const DEFAULT_SETTINGS = Object.freeze({
   fontSizePx: 18,
-  textColor: '#2a1e15',
+  textColor: '#2a2130',
   fontFamily: 'kiwi-maru',
   textFlowIntervalMs: 100,
-  backgroundColor: '#201914',
+  paperColor: '#f0e6da',
 });
 
-const PANEL_BORDER = 'rgba(126, 92, 53, 0.34)';
-const PANEL_SHADOW = 'rgba(45, 29, 17, 0.28)';
-const FISH_FILL = 'rgba(82, 97, 126, 0.34)';
-const FISH_STROKE = 'rgba(50, 55, 73, 0.92)';
-const FISH_ACCENT = 'rgba(138, 153, 182, 0.36)';
-const FISH_EYE = 'rgba(28, 22, 18, 0.92)';
-const SPROUT_BODY = 'rgba(250, 247, 242, 0.98)';
-const SPROUT_CAP = 'rgba(241, 209, 143, 0.96)';
-const SPROUT_STROKE = 'rgba(25, 22, 20, 0.96)';
-const SPROUT_EYE = 'rgba(25, 22, 20, 0.96)';
-const SPROUT_BLUSH = 'rgba(244, 159, 168, 0.58)';
+const PANEL_BORDER = 'rgba(120, 90, 108, 0.34)';
+const PANEL_SHADOW = 'rgba(32, 24, 40, 0.28)';
+const FISH_FILL = 'rgba(76, 88, 120, 0.38)';
+const FISH_STROKE = 'rgba(44, 48, 72, 0.92)';
+const FISH_ACCENT = 'rgba(130, 140, 176, 0.36)';
+const FISH_EYE = 'rgba(24, 20, 30, 0.92)';
+const SPROUT_BODY = 'rgba(248, 244, 238, 0.98)';
+const SPROUT_CAP = 'rgba(220, 180, 140, 0.96)';
+const SPROUT_STROKE = 'rgba(36, 28, 38, 0.96)';
+const SPROUT_EYE = 'rgba(36, 28, 38, 0.96)';
+const SPROUT_BLUSH = 'rgba(196, 122, 138, 0.58)';
 
-const DEFAULT_BOOK_TEXT_SOURCE = `
-ページの真ん中に置かれた羊皮紙は、ひとつの海のようでもあり、誰かの机の上にひっそり残された長い手紙のようでもある。乾いた繊維の目を追っていくと、昨日の午後に零れた光、まだ名前のつかない感情、言いそびれた約束、ずっと胸の底に沈めた小さな願いが、丸い文字になってゆっくり立ちのぼってくる。読んでいるはずなのに、読んでいるというより、耳を澄ませて紙のぬくもりを聴いているような気持ちになる。ひと文字ごとに呼吸があり、行と行のあいだには、言葉になる前のためらいが薄く積もっている。
-
-この頁には急ぐための筋道がない。はじめから終わりへ一直線に進むかわりに、指先を止めた場所から、ふいに別の思い出がつながっていく。たとえば、夕暮れの川面に映っていた橙色の雲。たとえば、遠い日の帰り道で、ポケットの中の飴玉がゆっくり溶けていったこと。たとえば、何も言わないまま隣を歩いた人の歩幅だけが、妙にあたたかく記憶に残っていること。そうした細い断片が、墨のようなやわらかな色で並び、紙のうえに静かな流れをつくっている。そこへ一匹の魚が現れて、うねうねと身をくねらせながら横切っていくたび、文字は消えるのではなく、一瞬だけ息をひそめる。
-
-魚は飾りではない。読んでいる側の胸の奥で、まだ言葉になっていないものが形を借りて泳いでいる。行をまたぎ、段落をまたぎ、まるで心拍に合わせるように身をよじりながら進むその影は、紙の白さを揺らし、文の輪郭にわずかな空白をつくる。けれど、その空白は欠落ではなく、むしろ読めなかったはずの気配を見えるようにする余白だ。すべてを読み切るためではなく、読み切れないものと並んで座るために、この頁はここにある。眺めているうちに、言葉は景色になり、景色はまた、心の中で別の言葉へほどけていく。
-
-だからこの本では、意味は前に進むためだけに使われない。意味はときどき立ち止まり、紙のしみや掠れに触れ、余白の涼しさに目を細め、魚の尾が残した揺れを見送る。丸い文字がゆったり並ぶのは、強く主張したいからではなく、誰かの内側に静かに着地したいからだ。読み終えたあとに残るのは、結論ではなく、ほんの少し呼吸の深くなった身体かもしれない。もしこの頁が、今日のあなたの中にまだ形を持たない思いを受け止められたなら、そのときはたぶん、羊皮紙の海もまた、ひそかにあなたを読んでいたのだと思う。
-`.trim();
+const DEFAULT_BOOK_TEXT_SOURCE = [
+  '汚れつちまつた悲しみに',
+  '',
+  '汚れつちまつた悲しみに',
+  '今日も小雪の降りかかる',
+  '汚れつちまつた悲しみに',
+  '今日も風さへ吹きすぎる',
+  '',
+  '汚れつちまつた悲しみは',
+  'たとへば狐の革裘 ',
+  '汚れつちまつた悲しみは',
+  '小雪のかかつてちぢこまる',
+  '',
+  '汚れつちまつた悲しみは',
+  'なにのぞむなくねがふなく',
+  '汚れつちまつた悲しみは',
+  '倦怠）のうちに死を夢む',
+].join('\n');
 
 let settings = loadSettings();
 let bookTextSource = DEFAULT_BOOK_TEXT_SOURCE;
@@ -107,6 +123,7 @@ let flowTargets = [];
 let lastTextFlowUpdate = 0;
 let appInitialized = false;
 let experienceStarted = false;
+let animationFrameId = 0;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -196,9 +213,9 @@ function drawSproutBean(context, x, y, rx, ry, rotation = 0, lineWidth = 1) {
   context.rotate(rotation);
 
   const beanGradient = context.createLinearGradient(-rx * 0.8, -ry, rx, ry);
-  beanGradient.addColorStop(0, 'rgba(255, 244, 214, 0.98)');
+  beanGradient.addColorStop(0, 'rgba(248, 240, 224, 0.98)');
   beanGradient.addColorStop(0.55, SPROUT_CAP);
-  beanGradient.addColorStop(1, 'rgba(226, 178, 101, 0.96)');
+  beanGradient.addColorStop(1, 'rgba(200, 160, 110, 0.96)');
 
   context.beginPath();
   context.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
@@ -211,7 +228,7 @@ function drawSproutBean(context, x, y, rx, ry, rotation = 0, lineWidth = 1) {
   context.beginPath();
   context.moveTo(rx * 0.08, -ry * 0.72);
   context.quadraticCurveTo(rx * 0.2, 0, rx * 0.08, ry * 0.72);
-  context.strokeStyle = 'rgba(115, 88, 47, 0.46)';
+  context.strokeStyle = 'rgba(110, 85, 75, 0.46)';
   context.lineWidth = Math.max(0.5, lineWidth * 0.72);
   context.stroke();
 
@@ -241,7 +258,7 @@ function drawSproutPodBean(context, x, y, rx, ry, lineWidth = 1) {
   context.quadraticCurveTo(rx * 0.66, ry * 1.14, 0, ry * 1.18);
   context.quadraticCurveTo(-rx * 0.7, ry * 1.14, -rx * 0.98, ry * 0.52);
   context.closePath();
-  context.fillStyle = 'rgba(249, 244, 236, 0.95)';
+  context.fillStyle = 'rgba(246, 240, 234, 0.95)';
   context.fill();
   context.strokeStyle = SPROUT_STROKE;
   context.lineWidth = lineWidth;
@@ -314,7 +331,7 @@ function drawSproutFairyFigure(context, metrics, pose = {}) {
     -m.stemWidth * 0.3, -m.stemHeight * 0.72,
     -m.stemWidth * 0.12, bodyTopY * 0.98
   );
-  context.strokeStyle = 'rgba(247, 226, 214, 0.58)';
+  context.strokeStyle = 'rgba(240, 220, 214, 0.58)';
   context.lineWidth = Math.max(1, m.stemWidth * 0.16);
   context.lineCap = 'round';
   context.stroke();
@@ -421,6 +438,72 @@ function roundRectPath(context, x, y, width, height, radius) {
   context.arcTo(x, y + height, x, y, r);
   context.arcTo(x, y, x + width, y, r);
   context.closePath();
+}
+
+function traceClosedSmoothPath(context, points) {
+  if (!points.length) {
+    return;
+  }
+
+  if (points.length < 3) {
+    context.beginPath();
+    traceSmoothLine(context, points);
+    context.closePath();
+    return;
+  }
+
+  const first = points[0];
+  const last = points[points.length - 1];
+  const startX = (last.x + first.x) * 0.5;
+  const startY = (last.y + first.y) * 0.5;
+
+  context.beginPath();
+  context.moveTo(startX, startY);
+
+  for (let index = 0; index < points.length; index += 1) {
+    const current = points[index];
+    const next = points[(index + 1) % points.length];
+    const midX = (current.x + next.x) * 0.5;
+    const midY = (current.y + next.y) * 0.5;
+    context.quadraticCurveTo(current.x, current.y, midX, midY);
+  }
+
+  context.closePath();
+}
+
+function createParchmentOutline(panelRect) {
+  const { x, y, width, height } = panelRect;
+  const notch = clamp(Math.min(width, height) * 0.018, 6, 16);
+  const cornerX = clamp(width * 0.045, 16, 32);
+  const cornerY = clamp(height * 0.034, 14, 30);
+
+  return [
+    { x: x + cornerX * 0.72, y: y + cornerY * 0.14 },
+    { x: x + width * 0.14, y: y + notch * 0.86 },
+    { x: x + width * 0.31, y: y + notch * 0.18 },
+    { x: x + width * 0.49, y: y + notch },
+    { x: x + width * 0.67, y: y + notch * 0.28 },
+    { x: x + width * 0.86, y: y + notch * 0.94 },
+    { x: x + width - cornerX * 0.74, y: y + cornerY * 0.22 },
+    { x: x + width - notch * 0.26, y: y + height * 0.14 },
+    { x: x + width - notch * 0.94, y: y + height * 0.34 },
+    { x: x + width - notch * 0.18, y: y + height * 0.56 },
+    { x: x + width - notch, y: y + height * 0.78 },
+    { x: x + width - cornerX * 0.92, y: y + height - cornerY * 0.64 },
+    { x: x + width * 0.82, y: y + height - notch * 0.34 },
+    { x: x + width * 0.64, y: y + height - notch },
+    { x: x + width * 0.42, y: y + height - notch * 0.16 },
+    { x: x + width * 0.2, y: y + height - notch * 0.84 },
+    { x: x + cornerX * 0.74, y: y + height - cornerY * 0.22 },
+    { x: x + notch * 0.28, y: y + height * 0.8 },
+    { x: x + notch * 0.98, y: y + height * 0.58 },
+    { x: x + notch * 0.14, y: y + height * 0.36 },
+    { x: x + cornerX * 0.56, y: y + cornerY * 0.84 },
+  ];
+}
+
+function parchmentPath(context, panelLayout) {
+  traceClosedSmoothPath(context, panelLayout.outlinePoints);
 }
 
 function traceSmoothLine(context, points) {
@@ -536,7 +619,10 @@ function sanitizeSettings(candidate = {}) {
     textColor: normalizeHexColor(candidate.textColor, DEFAULT_SETTINGS.textColor),
     fontFamily,
     textFlowIntervalMs,
-    backgroundColor: normalizeHexColor(candidate.backgroundColor, DEFAULT_SETTINGS.backgroundColor),
+    paperColor: normalizeHexColor(
+      candidate.paperColor ?? candidate.backgroundColor,
+      DEFAULT_SETTINGS.paperColor
+    ),
   };
 }
 
@@ -564,9 +650,9 @@ function updateConfigValueLabels() {
   fontSizeValueEl.textContent = `${fontSizeInputEl.value} px`;
   textColorValueEl.textContent = normalizeHexColor(textColorInputEl.value, DEFAULT_SETTINGS.textColor).toUpperCase();
   textIntervalValueEl.textContent = `${textIntervalInputEl.value} ms`;
-  backgroundColorValueEl.textContent = normalizeHexColor(
-    backgroundColorInputEl.value,
-    DEFAULT_SETTINGS.backgroundColor
+  paperColorValueEl.textContent = normalizeHexColor(
+    paperColorInputEl.value,
+    DEFAULT_SETTINGS.paperColor
   ).toUpperCase();
 }
 
@@ -576,7 +662,7 @@ function populateConfigForm(nextSettings = settings) {
   textColorInputEl.value = safeSettings.textColor;
   fontFamilyInputEl.value = safeSettings.fontFamily;
   textIntervalInputEl.value = String(safeSettings.textFlowIntervalMs);
-  backgroundColorInputEl.value = safeSettings.backgroundColor;
+  paperColorInputEl.value = safeSettings.paperColor;
   updateConfigValueLabels();
 }
 
@@ -586,12 +672,12 @@ function readConfigForm() {
     textColor: textColorInputEl.value,
     fontFamily: fontFamilyInputEl.value,
     textFlowIntervalMs: Number(textIntervalInputEl.value),
-    backgroundColor: backgroundColorInputEl.value,
+    paperColor: paperColorInputEl.value,
   });
 }
 
 function syncCssSettings() {
-  document.documentElement.style.setProperty('--bg', settings.backgroundColor);
+  document.documentElement.style.setProperty('--bg', SCENE_BACKGROUND_COLOR);
 }
 
 function resizeCanvas() {
@@ -626,12 +712,12 @@ function createBackdropTexture(width, height) {
   offscreen.width = Math.max(1, Math.floor(width));
   offscreen.height = Math.max(1, Math.floor(height));
   const offCtx = offscreen.getContext('2d');
-  const baseColor = hexToRgb(settings.backgroundColor);
-  const topColor = mixRgb(baseColor, { r: 255, g: 224, b: 188 }, 0.18);
+  const baseColor = hexToRgb(SCENE_BACKGROUND_COLOR);
+  const topColor = mixRgb(baseColor, { r: 200, g: 190, b: 210 }, 0.18);
   const middleColor = mixRgb(baseColor, { r: 0, g: 0, b: 0 }, 0.12);
   const bottomColor = mixRgb(baseColor, { r: 0, g: 0, b: 0 }, 0.36);
-  const glowColor = mixRgb(baseColor, { r: 255, g: 232, b: 194 }, 0.72);
-  const stainColor = mixRgb(baseColor, { r: 255, g: 224, b: 174 }, 0.6);
+  const glowColor = mixRgb(baseColor, { r: 210, g: 200, b: 220 }, 0.72);
+  const stainColor = mixRgb(baseColor, { r: 200, g: 190, b: 210 }, 0.6);
 
   const gradient = offCtx.createLinearGradient(0, 0, width, height);
   gradient.addColorStop(0, rgbToCss(topColor));
@@ -674,11 +760,17 @@ function createPaperTexture(width, height) {
   offscreen.width = Math.max(1, Math.floor(width));
   offscreen.height = Math.max(1, Math.floor(height));
   const offCtx = offscreen.getContext('2d');
+  const baseColor = hexToRgb(settings.paperColor);
+  const topColor = mixRgb(baseColor, { r: 240, g: 236, b: 232 }, 0.26);
+  const middleColor = mixRgb(baseColor, { r: 120, g: 90, b: 108 }, 0.1);
+  const bottomColor = mixRgb(baseColor, { r: 245, g: 240, b: 236 }, 0.18);
+  const vignetteEdgeColor = mixRgb(baseColor, { r: 72, g: 52, b: 64 }, 0.42);
+  const stainBaseColor = mixRgb(baseColor, { r: 112, g: 84, b: 98 }, 0.5);
 
   const gradient = offCtx.createLinearGradient(0, 0, width, height);
-  gradient.addColorStop(0, '#f6ecd5');
-  gradient.addColorStop(0.45, '#eddcbc');
-  gradient.addColorStop(1, '#f8efdc');
+  gradient.addColorStop(0, rgbToCss(topColor));
+  gradient.addColorStop(0.45, rgbToCss(middleColor));
+  gradient.addColorStop(1, rgbToCss(bottomColor));
   offCtx.fillStyle = gradient;
   offCtx.fillRect(0, 0, width, height);
 
@@ -693,7 +785,7 @@ function createPaperTexture(width, height) {
     Math.max(width, height) * 0.72
   );
   vignette.addColorStop(0, 'rgba(255, 249, 237, 0)');
-  vignette.addColorStop(1, 'rgba(124, 89, 51, 0.14)');
+  vignette.addColorStop(1, rgbToCss(vignetteEdgeColor, 0.14));
   offCtx.fillStyle = vignette;
   offCtx.fillRect(0, 0, width, height);
 
@@ -702,14 +794,14 @@ function createPaperTexture(width, height) {
     const x = randomBetween(radius, width - radius);
     const y = randomBetween(radius, height - radius);
     const stain = offCtx.createRadialGradient(x, y, radius * 0.15, x, y, radius);
-    stain.addColorStop(0, 'rgba(173, 133, 85, 0.05)');
-    stain.addColorStop(0.55, 'rgba(173, 133, 85, 0.018)');
-    stain.addColorStop(1, 'rgba(173, 133, 85, 0)');
+    stain.addColorStop(0, rgbToCss(stainBaseColor, 0.05));
+    stain.addColorStop(0.55, rgbToCss(stainBaseColor, 0.018));
+    stain.addColorStop(1, rgbToCss(stainBaseColor, 0));
     offCtx.fillStyle = stain;
     offCtx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
   }
 
-  offCtx.strokeStyle = 'rgba(160, 124, 83, 0.06)';
+  offCtx.strokeStyle = 'rgba(140, 110, 120, 0.06)';
   offCtx.lineWidth = 1;
   for (let index = 0; index < 42; index += 1) {
     const y = randomBetween(0, height);
@@ -859,10 +951,12 @@ function getSampleCellWidth() {
 }
 
 function getPanelRect() {
-  const outerMarginX = clamp(W * 0.028, 10, 28);
-  const outerMarginY = clamp(H * 0.028, 10, 28);
+  const outerMarginX = clamp(W * 0.03, 12, 32);
+  const outerMarginTop = clamp(H * 0.07, 52, 82);
+  const outerMarginBottom = clamp(H * 0.032, 12, 30);
   const targetAspect = A4_ASPECT_RATIO;
   const isPortrait = H > W || W < 900;
+  const availableHeight = Math.max(260, H - outerMarginTop - outerMarginBottom);
 
   let width;
   let height;
@@ -871,22 +965,22 @@ function getPanelRect() {
     const maxWidth = Math.max(220, W - outerMarginX * 2);
     const preferredWidth = Math.max(Math.min(320, maxWidth), W * 0.93);
     width = Math.min(maxWidth, preferredWidth);
-    height = Math.min(H - outerMarginY * 2, width / targetAspect);
+    height = Math.min(availableHeight, width / targetAspect);
   } else {
-    height = Math.min(H - outerMarginY * 2, H * 0.92);
+    height = Math.min(availableHeight, H * 0.88);
     width = Math.min(W - outerMarginX * 2, height * targetAspect);
     const minPreferredWidth = Math.min(340, W - outerMarginX * 2);
     if (width < minPreferredWidth) {
       width = minPreferredWidth;
-      height = Math.min(H - outerMarginY * 2, width / targetAspect);
+      height = Math.min(availableHeight, width / targetAspect);
     }
   }
 
   width = Math.min(width, W - outerMarginX * 2);
-  height = Math.min(height, H - outerMarginY * 2);
+  height = Math.min(height, availableHeight);
 
   const x = (W - width) * 0.5;
-  const y = (H - height) * 0.5;
+  const y = outerMarginTop + (availableHeight - height) * 0.5;
   const paddingX = clamp(width * 0.07, 20, 42);
   const paddingY = clamp(height * 0.055, 20, 48);
   const radius = clamp(Math.min(width, height) * 0.038, 18, 28);
@@ -940,6 +1034,7 @@ function buildSourceLines(source, maxChars) {
 
 function buildPanel() {
   const panelRect = getPanelRect();
+  const outlinePoints = createParchmentOutline(panelRect);
   const fontSize = clamp(settings.fontSizePx, MIN_FONT_SIZE, MAX_FONT_SIZE);
   const lineHeight = getLineHeight(fontSize);
   ctx.font = createFont(fontSize);
@@ -973,6 +1068,7 @@ function buildPanel() {
 
   return {
     ...panelRect,
+    outlinePoints,
     fontSize,
     lineHeight,
     cellWidth,
@@ -1302,7 +1398,7 @@ class SegmentedFish {
     };
 
     context.save();
-    context.shadowColor = 'rgba(32, 27, 28, 0.14)';
+    context.shadowColor = 'rgba(24, 20, 36, 0.14)';
     context.shadowBlur = 10;
     context.beginPath();
     traceSmoothLine(context, [nose, ...leftPoints, tailLeft, tailTip, tailRight, ...rightPoints.reverse(), nose]);
@@ -1356,7 +1452,7 @@ class SegmentedFish {
       const midY = (current.y + next.y) * 0.5 + current.normal.y * current.halfWidth * 0.14;
       context.quadraticCurveTo(current.x, current.y, midX, midY);
     }
-    context.strokeStyle = 'rgba(221, 233, 255, 0.16)';
+    context.strokeStyle = 'rgba(200, 210, 240, 0.16)';
     context.lineWidth = 1;
     context.stroke();
   }
@@ -1528,6 +1624,7 @@ function rebuildScene() {
   backdropTexture = createBackdropTexture(W, H);
   paperTexture = createPaperTexture(panel.width, panel.height);
   character = createCharacter(selectedCharacter, panel, motionBounds);
+  syncBackButtonPosition();
   flowTargets = [];
   lastTextFlowUpdate = 0;
   updateTextFlow(performance.now(), true);
@@ -1557,7 +1654,7 @@ function updateFps(dt) {
 }
 
 function drawBackground() {
-  ctx.fillStyle = settings.backgroundColor;
+  ctx.fillStyle = SCENE_BACKGROUND_COLOR;
   ctx.fillRect(0, 0, W, H);
 
   if (backdropTexture) {
@@ -1574,13 +1671,13 @@ function drawPanel() {
   ctx.shadowColor = PANEL_SHADOW;
   ctx.shadowBlur = 34;
   ctx.shadowOffsetY = 20;
-  roundRectPath(ctx, panel.x, panel.y, panel.width, panel.height, panel.radius);
-  ctx.fillStyle = '#eedfbe';
+  parchmentPath(ctx, panel);
+  ctx.fillStyle = settings.paperColor;
   ctx.fill();
   ctx.restore();
 
   ctx.save();
-  roundRectPath(ctx, panel.x, panel.y, panel.width, panel.height, panel.radius);
+  parchmentPath(ctx, panel);
   ctx.clip();
 
   if (paperTexture) {
@@ -1588,17 +1685,27 @@ function drawPanel() {
   }
 
   const wash = ctx.createLinearGradient(panel.x, panel.y, panel.x, panel.y + panel.height);
-  wash.addColorStop(0, 'rgba(255, 250, 240, 0.2)');
+  wash.addColorStop(0, 'rgba(248, 244, 238, 0.2)');
   wash.addColorStop(0.5, 'rgba(255, 255, 255, 0)');
-  wash.addColorStop(1, 'rgba(117, 84, 48, 0.06)');
+  wash.addColorStop(1, 'rgba(100, 80, 90, 0.06)');
   ctx.fillStyle = wash;
   ctx.fillRect(panel.x, panel.y, panel.width, panel.height);
   ctx.restore();
 
   ctx.save();
-  roundRectPath(ctx, panel.x, panel.y, panel.width, panel.height, panel.radius);
+  parchmentPath(ctx, panel);
   ctx.strokeStyle = PANEL_BORDER;
-  ctx.lineWidth = 1.2;
+  ctx.lineWidth = 1.3;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  parchmentPath(ctx, panel);
+  ctx.strokeStyle = 'rgba(248, 240, 232, 0.26)';
+  ctx.lineWidth = 0.8;
+  ctx.setLineDash([1.2, 6]);
+  ctx.lineDashOffset = 2;
   ctx.stroke();
   ctx.restore();
 }
@@ -1812,7 +1919,7 @@ function drawText() {
 }
 
 function loop(timestamp) {
-  requestAnimationFrame(loop);
+  animationFrameId = window.requestAnimationFrame(loop);
 
   if (!sceneReady || !panel || !character) {
     return;
@@ -1832,6 +1939,31 @@ function loop(timestamp) {
 function syncModalState() {
   const isOpen = !textModalEl.hidden || !configModalEl.hidden;
   document.body.classList.toggle('is-modal-open', isOpen);
+}
+
+function syncBackButtonPosition() {
+  if (!panel) {
+    return;
+  }
+
+  const rect = backButtonEl.getBoundingClientRect();
+  const buttonWidth = rect.width || 104;
+  const buttonHeight = rect.height || 42;
+  const gap = clamp(Math.min(panel.width, panel.height) * 0.018, 10, 18);
+  const left = clamp(panel.x + panel.width + gap * 0.55, 12, W - buttonWidth - 12);
+  const top = clamp(panel.y + panel.height - buttonHeight * 0.34, 12, H - buttonHeight - 12);
+
+  backButtonEl.style.left = `${Math.round(left)}px`;
+  backButtonEl.style.top = `${Math.round(top)}px`;
+}
+
+function stopAnimationLoop() {
+  if (!animationFrameId) {
+    return;
+  }
+
+  window.cancelAnimationFrame(animationFrameId);
+  animationFrameId = 0;
 }
 
 function setInputModalOpen(isOpen, options = {}) {
@@ -1927,7 +2059,28 @@ function startExperience() {
   startScreenEl.classList.add('is-hidden');
   document.body.classList.add('is-running');
   lastTime = performance.now();
-  requestAnimationFrame(loop);
+  if (!animationFrameId) {
+    animationFrameId = window.requestAnimationFrame(loop);
+  }
+}
+
+function returnToStartScreen() {
+  stopAnimationLoop();
+  experienceStarted = false;
+  sceneReady = false;
+  frameCount = 0;
+  fpsAccum = 0;
+  fpsEl.textContent = '0 FPS';
+  setInputModalOpen(false, { restoreFocus: false });
+  setConfigModalOpen(false, { restoreFocus: false });
+  document.body.classList.remove('is-running');
+  startScreenEl.classList.remove('is-hidden');
+  const checkedRadio = document.querySelector('input[name="character"]:checked');
+  selectedCharacter = checkedRadio ? checkedRadio.value : selectedCharacter;
+  bookTextSource = normalizeSourceText(textInputEl.value);
+  rebuildScene();
+  renderIntroFrame();
+  startButton.focus();
 }
 
 function scheduleRebuild() {
@@ -1942,6 +2095,7 @@ function scheduleRebuild() {
 }
 
 window.addEventListener('resize', scheduleRebuild);
+backButtonEl.addEventListener('click', returnToStartScreen);
 toggleInputButton.addEventListener('click', () => {
   setInputModalOpen(true);
 });
@@ -2001,7 +2155,7 @@ configFormEl.addEventListener('submit', (event) => {
 fontSizeInputEl.addEventListener('input', updateConfigValueLabels);
 textColorInputEl.addEventListener('input', updateConfigValueLabels);
 textIntervalInputEl.addEventListener('input', updateConfigValueLabels);
-backgroundColorInputEl.addEventListener('input', updateConfigValueLabels);
+paperColorInputEl.addEventListener('input', updateConfigValueLabels);
 document.querySelectorAll('input[name="character"]').forEach((radio) => {
   radio.addEventListener('change', (event) => {
     if (experienceStarted || !event.target.checked) {

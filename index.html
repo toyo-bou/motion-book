@@ -13,20 +13,21 @@
   <link
     rel="preload"
     as="style"
-    href="https://fonts.googleapis.com/css2?family=Kiwi+Maru:wght@300;400&family=M+PLUS+1+Code:wght@300;400&display=block"
+    href="https://fonts.googleapis.com/css2?family=Kiwi+Maru:wght@300;400&family=M+PLUS+1+Code:wght@300;400&family=Shippori+Mincho:wght@400;500&display=block"
   />
   <link
-    href="https://fonts.googleapis.com/css2?family=Kiwi+Maru:wght@300;400&family=M+PLUS+1+Code:wght@300;400&display=block"
+    href="https://fonts.googleapis.com/css2?family=Kiwi+Maru:wght@300;400&family=M+PLUS+1+Code:wght@300;400&family=Shippori+Mincho:wght@400;500&display=block"
     rel="stylesheet"
   />
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
   <canvas id="canvas"></canvas>
+  <button id="back-button" type="button" aria-label="スタート画面に戻る">← 戻る</button>
   <div id="start-screen">
     <section class="start-card" aria-labelledby="start-title">
       <p class="start-eyebrow">MOTION BOOK</p>
-      <h1 id="start-title" class="start-title">文字の海を、選んだ言葉で始める。</h1>
+      <h1 id="start-title" class="start-title">言葉と、余白の夢。</h1>
       <p class="start-description">
         テキスト入力ボタンから文章をコピペ、または入力してからスタートしてください。入力した文字の中をキャラクターが動きます。
       </p>
@@ -116,7 +117,7 @@
       </div>
       <h2 id="config-modal-title" class="app-modal-title">表示設定</h2>
       <p class="app-modal-description">
-        文字の見た目と更新テンポ、背景色を調整できます。適用するとスタート前のプレビューにも反映します。
+        文字の見た目と更新テンポ、紙の色を調整できます。適用するとスタート前のプレビューにも反映します。
       </p>
       <form id="config-form" class="config-form">
         <div class="config-grid">
@@ -130,9 +131,9 @@
           <label class="config-field" for="text-color-input">
             <span class="config-field-head">
               <span class="app-modal-label">文字の色</span>
-              <span id="text-color-value" class="config-value">#2A1E15</span>
+              <span id="text-color-value" class="config-value">#2A2130</span>
             </span>
-            <input id="text-color-input" class="config-color" type="color" value="#2A1E15" />
+            <input id="text-color-input" class="config-color" type="color" value="#2A2130" />
           </label>
           <label class="config-field" for="font-family-input">
             <span class="config-field-head">
@@ -142,6 +143,7 @@
               <option value="kiwi-maru">Kiwi Maru</option>
               <option value="yu-gothic">Yu Gothic</option>
               <option value="m-plus-code">M PLUS 1 Code</option>
+              <option value="shippori-mincho">Shippori Mincho</option>
             </select>
           </label>
           <label class="config-field" for="text-interval-input">
@@ -151,12 +153,12 @@
             </span>
             <input id="text-interval-input" class="config-range" type="range" min="50" max="250" step="10" value="100" />
           </label>
-          <label class="config-field" for="background-color-input">
+          <label class="config-field" for="paper-color-input">
             <span class="config-field-head">
-              <span class="app-modal-label">背景の色</span>
-              <span id="background-color-value" class="config-value">#201914</span>
+              <span class="app-modal-label">紙の色</span>
+              <span id="paper-color-value" class="config-value">#F0E6DA</span>
             </span>
-            <input id="background-color-input" class="config-color" type="color" value="#201914" />
+            <input id="paper-color-input" class="config-color" type="color" value="#F0E6DA" />
           </label>
         </div>
       </form>
