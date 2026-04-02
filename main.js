@@ -31,6 +31,11 @@ const FISH_FILL = 'rgba(82, 97, 126, 0.34)';
 const FISH_STROKE = 'rgba(50, 55, 73, 0.92)';
 const FISH_ACCENT = 'rgba(138, 153, 182, 0.36)';
 const FISH_EYE = 'rgba(28, 22, 18, 0.92)';
+const SPROUT_BODY = 'rgba(250, 247, 242, 0.98)';
+const SPROUT_CAP = 'rgba(241, 209, 143, 0.96)';
+const SPROUT_STROKE = 'rgba(25, 22, 20, 0.96)';
+const SPROUT_EYE = 'rgba(25, 22, 20, 0.96)';
+const SPROUT_BLUSH = 'rgba(244, 159, 168, 0.58)';
 
 const DEFAULT_BOOK_TEXT_SOURCE = `
 ページの真ん中に置かれた羊皮紙は、ひとつの海のようでもあり、誰かの机の上にひっそり残された長い手紙のようでもある。乾いた繊維の目を追っていくと、昨日の午後に零れた光、まだ名前のつかない感情、言いそびれた約束、ずっと胸の底に沈めた小さな願いが、丸い文字になってゆっくり立ちのぼってくる。読んでいるはずなのに、読んでいるというより、耳を澄ませて紙のぬくもりを聴いているような気持ちになる。ひと文字ごとに呼吸があり、行と行のあいだには、言葉になる前のためらいが薄く積もっている。
@@ -48,7 +53,8 @@ let W = 0;
 let H = 0;
 let dpr = 1;
 let panel = null;
-let fish = null;
+let character = null;
+let selectedCharacter = 'fish';
 let motionBounds = null;
 let backdropTexture = null;
 let paperTexture = null;
@@ -112,6 +118,258 @@ function pointInOrientedEllipse(px, py, cx, cy, angle, rx, ry) {
   const localX = dx * cos + dy * sin;
   const localY = -dx * sin + dy * cos;
   return (localX * localX) / (rx * rx) + (localY * localY) / (ry * ry) <= 1;
+}
+
+function pointToSegmentDistance(px, py, ax, ay, bx, by) {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const denom = abx * abx + aby * aby || 1;
+  const t = clamp(((px - ax) * abx + (py - ay) * aby) / denom, 0, 1);
+  const closestX = ax + abx * t;
+  const closestY = ay + aby * t;
+  return Math.hypot(px - closestX, py - closestY);
+}
+
+function strokeOutlinedPath(context, outerWidth, innerWidth, outlineColor, fillColor, pathBuilder) {
+  context.save();
+  context.lineCap = 'round';
+  context.lineJoin = 'round';
+
+  context.beginPath();
+  pathBuilder(context);
+  context.strokeStyle = outlineColor;
+  context.lineWidth = outerWidth;
+  context.stroke();
+
+  context.beginPath();
+  pathBuilder(context);
+  context.strokeStyle = fillColor;
+  context.lineWidth = innerWidth;
+  context.stroke();
+
+  context.restore();
+}
+
+function drawSproutBean(context, x, y, rx, ry, rotation = 0, lineWidth = 1) {
+  context.save();
+  context.translate(x, y);
+  context.rotate(rotation);
+
+  const beanGradient = context.createLinearGradient(-rx * 0.8, -ry, rx, ry);
+  beanGradient.addColorStop(0, 'rgba(255, 244, 214, 0.98)');
+  beanGradient.addColorStop(0.55, SPROUT_CAP);
+  beanGradient.addColorStop(1, 'rgba(226, 178, 101, 0.96)');
+
+  context.beginPath();
+  context.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+  context.fillStyle = beanGradient;
+  context.fill();
+  context.strokeStyle = SPROUT_STROKE;
+  context.lineWidth = lineWidth;
+  context.stroke();
+
+  context.beginPath();
+  context.moveTo(rx * 0.08, -ry * 0.72);
+  context.quadraticCurveTo(rx * 0.2, 0, rx * 0.08, ry * 0.72);
+  context.strokeStyle = 'rgba(115, 88, 47, 0.46)';
+  context.lineWidth = Math.max(0.5, lineWidth * 0.72);
+  context.stroke();
+
+  context.fillStyle = 'rgba(255, 255, 255, 0.62)';
+  context.beginPath();
+  context.ellipse(-rx * 0.28, -ry * 0.12, rx * 0.22, ry * 0.4, -0.2, 0, Math.PI * 2);
+  context.fill();
+
+  context.beginPath();
+  context.ellipse(rx * 0.34, -ry * 0.08, rx * 0.12, ry * 0.34, -0.08, 0, Math.PI * 2);
+  context.fill();
+
+  context.restore();
+}
+
+function drawSproutPodBean(context, x, y, rx, ry, lineWidth = 1) {
+  context.save();
+  context.translate(x, y);
+
+  context.beginPath();
+  context.moveTo(-rx * 1.1, ry * 0.14);
+  context.quadraticCurveTo(-rx * 0.95, ry * 0.78, -rx * 0.48, ry * 0.58);
+  context.quadraticCurveTo(-rx * 0.16, ry * 1.04, 0, ry * 0.56);
+  context.quadraticCurveTo(rx * 0.2, ry * 1.0, rx * 0.52, ry * 0.58);
+  context.quadraticCurveTo(rx * 0.9, ry * 0.82, rx * 1.12, ry * 0.18);
+  context.lineTo(rx * 0.96, ry * 0.54);
+  context.quadraticCurveTo(rx * 0.66, ry * 1.14, 0, ry * 1.18);
+  context.quadraticCurveTo(-rx * 0.7, ry * 1.14, -rx * 0.98, ry * 0.52);
+  context.closePath();
+  context.fillStyle = 'rgba(249, 244, 236, 0.95)';
+  context.fill();
+  context.strokeStyle = SPROUT_STROKE;
+  context.lineWidth = lineWidth;
+  context.stroke();
+
+  context.restore();
+  drawSproutBean(context, x, y - ry * 0.18, rx * 0.92, ry * 0.92, -0.18, Math.max(0.6, lineWidth * 0.9));
+}
+
+function drawSproutStarHand(context, x, y, size, lineWidth) {
+  const fingers = [
+    { x: size, y: -size * 0.12 },
+    { x: size * 0.26, y: -size * 0.92 },
+    { x: size * 0.12, y: size * 0.88 },
+    { x: -size * 0.72, y: size * 0.16 },
+  ];
+
+  context.save();
+  context.translate(x, y);
+  context.strokeStyle = SPROUT_STROKE;
+  context.lineWidth = lineWidth;
+  context.lineCap = 'round';
+
+  for (const finger of fingers) {
+    context.beginPath();
+    context.moveTo(0, 0);
+    context.lineTo(finger.x, finger.y);
+    context.stroke();
+  }
+
+  context.restore();
+}
+
+function drawSproutFairyFigure(context, metrics, pose = {}) {
+  const m = metrics;
+  const walkPhase = pose.walkPhase || 0;
+  const bodyTopY = -m.stemHeight;
+  const bodyBottomY = 0;
+  const legSwing = Math.sin(walkPhase) * m.legLength * 0.08;
+  const armSwing = Math.sin(walkPhase + Math.PI * 0.25) * m.armLength * 0.08;
+  const podX = -m.sideBeanOffsetX;
+  const podY = -m.sideBeanOffsetY + Math.cos(walkPhase * 0.8) * m.sideBeanRy * 0.08;
+  const rightArmBaseX = m.stemWidth * 0.44;
+  const rightArmBaseY = -m.stemHeight * 0.16;
+  const rightHandX = rightArmBaseX + m.armLength;
+  const rightHandY = rightArmBaseY + m.armLength * 0.24 + armSwing;
+  const leftArmBaseX = -m.stemWidth * 0.4;
+  const leftArmBaseY = -m.stemHeight * 0.08;
+
+  context.save();
+  context.shadowColor = 'rgba(0, 0, 0, 0.08)';
+  context.shadowBlur = Math.max(2, m.stemWidth * 0.28);
+
+  strokeOutlinedPath(context, m.stemWidth + 4, m.stemWidth, SPROUT_STROKE, SPROUT_BODY, (ctxRef) => {
+    ctxRef.moveTo(0, bodyBottomY);
+    ctxRef.bezierCurveTo(-m.bodyCurve, -m.stemHeight * 0.22, -m.bodyCurve * 0.38, -m.stemHeight * 0.7, 0, bodyTopY);
+  });
+
+  strokeOutlinedPath(context, m.hookWidth + 4, m.hookWidth, SPROUT_STROKE, SPROUT_BODY, (ctxRef) => {
+    ctxRef.moveTo(0, bodyTopY);
+    ctxRef.quadraticCurveTo(m.hookTipX * 0.24, bodyTopY - m.topBeanRy * 0.76, m.hookTipX, m.hookTipY);
+  });
+
+  context.shadowBlur = 0;
+
+  context.beginPath();
+  context.moveTo(-m.stemWidth * 0.16, -m.stemHeight * 0.06);
+  context.bezierCurveTo(
+    -m.stemWidth * 0.34, -m.stemHeight * 0.26,
+    -m.stemWidth * 0.3, -m.stemHeight * 0.72,
+    -m.stemWidth * 0.12, bodyTopY * 0.98
+  );
+  context.strokeStyle = 'rgba(247, 226, 214, 0.58)';
+  context.lineWidth = Math.max(1, m.stemWidth * 0.16);
+  context.lineCap = 'round';
+  context.stroke();
+
+  drawSproutBean(context, m.topBeanX, m.topBeanY, m.topBeanRx, m.topBeanRy, 0.18, Math.max(0.8, m.armWidth * 0.42));
+
+  context.strokeStyle = SPROUT_STROKE;
+  context.lineWidth = m.armWidth;
+  context.lineCap = 'round';
+  context.beginPath();
+  context.moveTo(leftArmBaseX, leftArmBaseY);
+  context.quadraticCurveTo(
+    leftArmBaseX - m.leftArmLength * 0.55,
+    leftArmBaseY + m.leftArmLength * 0.15,
+    podX + m.sideBeanRx * 0.72,
+    podY + m.sideBeanRy * 0.24
+  );
+  context.stroke();
+
+  drawSproutPodBean(context, podX, podY, m.sideBeanRx, m.sideBeanRy, Math.max(0.8, m.armWidth * 0.72));
+
+  context.beginPath();
+  context.moveTo(rightArmBaseX, rightArmBaseY);
+  context.quadraticCurveTo(
+    rightArmBaseX + m.armLength * 0.6,
+    rightArmBaseY - m.armLength * 0.08 + armSwing * 0.35,
+    rightHandX,
+    rightHandY
+  );
+  context.stroke();
+  drawSproutStarHand(context, rightHandX, rightHandY, m.handSize, Math.max(0.8, m.armWidth * 0.74));
+
+  const leftLegEndX = -m.legSpread - legSwing * 0.45;
+  const rightLegEndX = m.legSpread + legSwing * 0.34;
+  const leftLegEndY = m.legLength;
+  const rightLegEndY = m.legLength * 0.96;
+
+  context.lineWidth = m.legWidth;
+  context.beginPath();
+  context.moveTo(-m.legSpread * 0.24, bodyBottomY);
+  context.quadraticCurveTo(-m.legSpread * 0.62, m.legLength * 0.38, leftLegEndX, leftLegEndY);
+  context.stroke();
+
+  context.beginPath();
+  context.moveTo(m.legSpread * 0.24, bodyBottomY);
+  context.quadraticCurveTo(m.legSpread * 0.6, m.legLength * 0.36, rightLegEndX, rightLegEndY);
+  context.stroke();
+
+  context.lineWidth = Math.max(1, m.legWidth * 0.82);
+  context.beginPath();
+  context.moveTo(leftLegEndX, leftLegEndY);
+  context.quadraticCurveTo(
+    leftLegEndX - m.footSize * 0.2,
+    leftLegEndY + m.footSize * 0.18,
+    leftLegEndX - m.footSize * 0.78,
+    leftLegEndY - m.footSize * 0.04
+  );
+  context.stroke();
+
+  context.beginPath();
+  context.moveTo(rightLegEndX, rightLegEndY);
+  context.quadraticCurveTo(
+    rightLegEndX + m.footSize * 0.18,
+    rightLegEndY + m.footSize * 0.18,
+    rightLegEndX + m.footSize * 0.78,
+    rightLegEndY - m.footSize * 0.04
+  );
+  context.stroke();
+
+  context.beginPath();
+  context.moveTo(0, bodyBottomY + 1);
+  context.lineTo(0, m.legLength * 0.52);
+  context.lineWidth = Math.max(1, m.stemWidth * 0.18);
+  context.stroke();
+
+  const faceX = -m.stemWidth * 0.34;
+  const faceY = bodyTopY + m.stemWidth * 1.26;
+  const faceSize = Math.max(1.2, m.stemWidth * 0.18);
+  context.strokeStyle = SPROUT_EYE;
+  context.lineWidth = Math.max(0.9, m.armWidth * 0.5);
+
+  context.beginPath();
+  context.arc(faceX, faceY, faceSize, Math.PI * 0.16, Math.PI * 0.9);
+  context.stroke();
+
+  context.beginPath();
+  context.arc(faceX + m.stemWidth * 0.6, faceY + m.stemWidth * 0.38, faceSize * 1.42, -0.12, Math.PI * 0.94);
+  context.stroke();
+
+  context.fillStyle = SPROUT_BLUSH;
+  context.beginPath();
+  context.ellipse(faceX + m.stemWidth * 0.16, faceY + m.stemWidth * 0.56, faceSize * 0.94, faceSize * 0.6, 0, 0, Math.PI * 2);
+  context.fill();
+
+  context.restore();
 }
 
 function roundRectPath(context, x, y, width, height, radius) {
@@ -319,6 +577,88 @@ function createFishMetrics(panelLayout) {
     courseWaveSpeed: randomBetween(0.95, 1.25),
     bodyLength: headLength + segmentSpacing * (halfWidths.length - 1) + tailLength,
     maxHalfWidth: Math.max(...halfWidths),
+    motionInsets: {
+      left: headLength * 0.72,
+      right: headLength * 0.72,
+      top: Math.max(...halfWidths) * 1.35,
+      bottom: Math.max(...halfWidths) * 1.35,
+    },
+  };
+}
+
+function createSproutMetrics(panelLayout) {
+  const minDim = Math.min(panelLayout.innerWidth, panelLayout.innerHeight);
+  const sproutScale = 1.1;
+  const stemHeight = clamp(minDim * 0.44, 150, 250) * sproutScale;
+  const stemWidth = clamp(minDim * 0.024, 14, 22) * sproutScale;
+  const bodyCurve = clamp(minDim * 0.005, 2.5, 6) * sproutScale;
+  const hookTipX = clamp(minDim * 0.05, 20, 34) * sproutScale;
+  const topBeanRx = clamp(minDim * 0.045, 18, 30) * sproutScale;
+  const topBeanRy = topBeanRx * 0.82;
+  const hookTipY = -stemHeight + clamp(minDim * 0.03, 10, 18) * sproutScale;
+  const topBeanX = hookTipX + topBeanRx * 0.34;
+  const topBeanY = hookTipY + topBeanRy * 0.56;
+  const sideBeanRx = clamp(minDim * 0.03, 12, 20) * sproutScale;
+  const sideBeanRy = sideBeanRx * 0.78;
+  const sideBeanOffsetX = clamp(minDim * 0.052, 20, 34) * sproutScale;
+  const sideBeanOffsetY = clamp(minDim * 0.045, 12, 24) * sproutScale;
+  const armLength = clamp(minDim * 0.05, 20, 34) * sproutScale;
+  const leftArmLength = clamp(minDim * 0.036, 12, 24) * sproutScale;
+  const legLength = clamp(minDim * 0.05, 18, 30) * sproutScale;
+  const legSpread = clamp(minDim * 0.02, 8, 14) * sproutScale;
+  const footSize = clamp(minDim * 0.018, 6, 11) * sproutScale;
+  const armWidth = clamp(stemWidth * 0.26, 2.8 * sproutScale, 4.2 * sproutScale);
+  const legWidth = clamp(stemWidth * 0.38, 4.2 * sproutScale, 6.5 * sproutScale);
+  const hookWidth = stemWidth * 0.92;
+  const handSize = clamp(minDim * 0.01, 5, 9) * sproutScale;
+  const bodyLength = stemHeight + legLength + topBeanRy * 1.6;
+  const maxHalfWidth = Math.max(
+    hookTipX + topBeanRx * 1.45,
+    sideBeanOffsetX + sideBeanRx * 1.35,
+    armLength + handSize + stemWidth * 0.4,
+    legSpread + footSize + stemWidth * 0.22
+  );
+
+  return {
+    stemHeight,
+    stemWidth,
+    bodyCurve,
+    hookTipX,
+    hookTipY,
+    hookWidth,
+    topBeanX,
+    topBeanY,
+    topBeanRx,
+    topBeanRy,
+    sideBeanOffsetX,
+    sideBeanOffsetY,
+    sideBeanRx,
+    sideBeanRy,
+    armLength,
+    leftArmLength,
+    armWidth,
+    handSize,
+    legLength,
+    legSpread,
+    legWidth,
+    footSize,
+    hopStride: clamp(minDim * 0.085, 28, 60) * sproutScale,
+    minHopStride: clamp(minDim * 0.038, 14, 26) * sproutScale,
+    hopHeight: clamp(minDim * 0.09, 24, 54) * sproutScale,
+    hopHeightVariance: clamp(minDim * 0.022, 6, 14) * sproutScale,
+    minHopDuration: 0.34,
+    maxHopDuration: 0.58,
+    landingBobAmplitude: clamp(minDim * 0.012, 3.5, 9) * sproutScale,
+    idleBobAmplitude: clamp(minDim * 0.003, 0.8, 2.4) * sproutScale,
+    targetThreshold: clamp(minDim * 0.08, 24, 52) * sproutScale,
+    bodyLength,
+    maxHalfWidth,
+    motionInsets: {
+      left: maxHalfWidth * 1.02,
+      right: maxHalfWidth * 1.02,
+      top: stemHeight + topBeanRy * 1.45,
+      bottom: legLength + footSize * 1.1,
+    },
   };
 }
 
@@ -342,8 +682,8 @@ function getSampleCellWidth() {
 }
 
 function getPanelRect() {
-  const outerMarginX = clamp(W * 0.045, 16, 42);
-  const outerMarginY = clamp(H * 0.045, 16, 42);
+  const outerMarginX = clamp(W * 0.028, 10, 28);
+  const outerMarginY = clamp(H * 0.028, 10, 28);
   const targetAspect = A4_ASPECT_RATIO;
   const isPortrait = H > W || W < 900;
 
@@ -352,13 +692,13 @@ function getPanelRect() {
 
   if (isPortrait) {
     const maxWidth = Math.max(220, W - outerMarginX * 2);
-    const preferredWidth = Math.max(Math.min(300, maxWidth), W * 0.88);
+    const preferredWidth = Math.max(Math.min(320, maxWidth), W * 0.93);
     width = Math.min(maxWidth, preferredWidth);
     height = Math.min(H - outerMarginY * 2, width / targetAspect);
   } else {
-    height = Math.min(H - outerMarginY * 2, H * 0.86);
+    height = Math.min(H - outerMarginY * 2, H * 0.92);
     width = Math.min(W - outerMarginX * 2, height * targetAspect);
-    const minPreferredWidth = Math.min(300, W - outerMarginX * 2);
+    const minPreferredWidth = Math.min(340, W - outerMarginX * 2);
     if (width < minPreferredWidth) {
       width = minPreferredWidth;
       height = Math.min(H - outerMarginY * 2, width / targetAspect);
@@ -446,7 +786,9 @@ function buildPanel() {
   }
 
   const fishMetrics = createFishMetrics(panelRect);
-  const blockedSlots = estimateBlockedSlots(fishMetrics, cellWidth, lineHeight);
+  const sproutMetrics = createSproutMetrics(panelRect);
+  const activeMetrics = selectedCharacter === 'sprout' ? sproutMetrics : fishMetrics;
+  const blockedSlots = estimateBlockedSlots(activeMetrics, cellWidth, lineHeight);
   const spareSlots = Math.max(12, Math.round(slots.length * 0.06));
   const visibleTarget = Math.min(TARGET_VISIBLE_CHARS, Math.max(120, slots.length - blockedSlots - spareSlots));
   const textContent = buildSourceLines(bookTextSource, visibleTarget);
@@ -462,6 +804,8 @@ function buildPanel() {
     slots,
     rowCenters,
     fishMetrics,
+    sproutMetrics,
+    activeMetrics,
     blockedSlots,
     spareSlots,
     textClearance: getTextClearance(cellWidth, lineHeight),
@@ -472,13 +816,18 @@ function buildPanel() {
 }
 
 function getMotionBounds(layout) {
-  const marginX = layout.fishMetrics.headLength * 0.72 + layout.textClearance * 0.6;
-  const marginY = layout.fishMetrics.maxHalfWidth * 1.35 + layout.textClearance * 0.55;
+  const metrics = layout.activeMetrics;
+  const motionInsets = metrics.motionInsets || {
+    left: (metrics.headLength || metrics.bodyLength * 0.2) * 0.72,
+    right: (metrics.headLength || metrics.bodyLength * 0.2) * 0.72,
+    top: metrics.maxHalfWidth * 1.35,
+    bottom: metrics.maxHalfWidth * 1.35,
+  };
   return {
-    minX: layout.innerX + marginX,
-    maxX: layout.innerX + layout.innerWidth - marginX,
-    minY: layout.innerY + marginY,
-    maxY: layout.innerY + layout.innerHeight - marginY,
+    minX: layout.innerX + motionInsets.left + layout.textClearance * 0.55,
+    maxX: layout.innerX + layout.innerWidth - motionInsets.right - layout.textClearance * 0.55,
+    minY: layout.innerY + motionInsets.top + layout.textClearance * 0.35,
+    maxY: layout.innerY + layout.innerHeight - motionInsets.bottom - layout.textClearance * 0.35,
   };
 }
 
@@ -836,13 +1185,172 @@ class SegmentedFish {
   }
 }
 
+class BeanSproutFairy {
+  constructor(metrics, bounds) {
+    this.metrics = metrics;
+    this.bounds = bounds;
+    this.x = randomBetween(bounds.minX, bounds.maxX);
+    this.y = randomBetween(bounds.minY, bounds.maxY);
+    this.displayY = this.y;
+    this.rotation = 0;
+    this.bobOffset = 0;
+    this.walkPhase = Math.random() * Math.PI * 2;
+    this.facing = Math.random() < 0.5 ? -1 : 1;
+    this.hopElapsed = 0;
+    this.hopDuration = metrics.minHopDuration;
+    this.hopHeight = metrics.hopHeight;
+    this.hopStartX = this.x;
+    this.hopStartY = this.y;
+    this.hopEndX = this.x;
+    this.hopEndY = this.y;
+    this.hopProgress = 0;
+    this.pickTarget(true);
+    this.startHop(true);
+  }
+
+  pickTarget(forceWide = false) {
+    const insetX = forceWide ? 0 : (this.bounds.maxX - this.bounds.minX) * 0.08;
+    const insetY = forceWide ? 0 : (this.bounds.maxY - this.bounds.minY) * 0.12;
+    this.targetX = randomBetween(this.bounds.minX + insetX, this.bounds.maxX - insetX);
+    this.targetY = randomBetween(this.bounds.minY + insetY, this.bounds.maxY - insetY);
+  }
+
+  toLocalPoint(px, py) {
+    const dx = px - this.x;
+    const dy = py - this.displayY;
+    const cos = Math.cos(this.rotation);
+    const sin = Math.sin(this.rotation);
+    return {
+      x: (dx * cos + dy * sin) * this.facing,
+      y: -dx * sin + dy * cos,
+    };
+  }
+
+  startHop(forceInitial = false) {
+    const m = this.metrics;
+    const dx = this.targetX - this.x;
+    const dy = this.targetY - this.y;
+    const distanceToTarget = Math.hypot(dx, dy);
+
+    if (!forceInitial && distanceToTarget < m.targetThreshold) {
+      this.pickTarget();
+    }
+
+    const nextDx = this.targetX - this.x;
+    const nextDy = this.targetY - this.y;
+    const nextDistance = Math.hypot(nextDx, nextDy) || 1;
+    const dirX = nextDx / nextDistance;
+    const dirY = nextDy / nextDistance;
+    const stride = clamp(
+      nextDistance * randomBetween(0.28, 0.42),
+      m.minHopStride,
+      m.hopStride
+    );
+
+    this.hopStartX = this.x;
+    this.hopStartY = this.y;
+    this.hopEndX = clamp(this.x + dirX * stride, this.bounds.minX, this.bounds.maxX);
+    this.hopEndY = clamp(this.y + dirY * stride * 0.75, this.bounds.minY, this.bounds.maxY);
+    this.hopElapsed = 0;
+    this.hopDuration = randomBetween(m.minHopDuration, m.maxHopDuration);
+    this.hopHeight = clamp(
+      m.hopHeight + randomBetween(-m.hopHeightVariance, m.hopHeightVariance) + stride * 0.16,
+      m.hopHeight * 0.72,
+      m.hopHeight * 1.45
+    );
+    this.hopProgress = 0;
+
+    if (Math.abs(this.hopEndX - this.x) > 1.5) {
+      this.facing = this.hopEndX >= this.x ? 1 : -1;
+    }
+  }
+
+  update(dt, timestamp) {
+    const m = this.metrics;
+    this.hopElapsed += dt;
+    const progress = clamp(this.hopElapsed / this.hopDuration, 0, 1);
+    this.hopProgress = progress;
+    const travel = 1 - Math.pow(1 - progress, 2);
+
+    this.x = lerp(this.hopStartX, this.hopEndX, travel);
+    this.y = lerp(this.hopStartY, this.hopEndY, travel);
+
+    const hopLift = Math.sin(progress * Math.PI) * this.hopHeight;
+    const touchdownPulse = Math.max(0, 1 - Math.abs(progress - 0.96) / 0.1);
+    const launchPulse = Math.max(0, 1 - Math.abs(progress - 0.08) / 0.1);
+    this.walkPhase += dt * lerp(7.5, 11.5, hopLift / Math.max(1, this.hopHeight));
+
+    const bobTarget =
+      -hopLift +
+      Math.sin(timestamp * 0.0016 + this.walkPhase * 0.18) * m.idleBobAmplitude +
+      Math.sin(progress * Math.PI * 2) * m.landingBobAmplitude * 0.12 -
+      touchdownPulse * m.landingBobAmplitude * 0.2 +
+      launchPulse * m.landingBobAmplitude * 0.08;
+    this.bobOffset += (bobTarget - this.bobOffset) * (1 - Math.exp(-dt * 11));
+    this.displayY = clamp(this.y + this.bobOffset, this.bounds.minY, this.bounds.maxY + m.footSize);
+
+    const arcTilt = Math.sin(progress * Math.PI) * 0.045 * this.facing;
+    const targetRotation = clamp((this.hopEndX - this.hopStartX) / Math.max(1, m.hopStride) * 0.06, -0.06, 0.06) + arcTilt;
+    this.rotation += (targetRotation - this.rotation) * (1 - Math.exp(-dt * 5.5));
+
+    if (progress >= 1) {
+      this.x = this.hopEndX;
+      this.y = this.hopEndY;
+      this.startHop();
+    }
+  }
+
+  contains(px, py, padding = 0) {
+    const m = this.metrics;
+    const local = this.toLocalPoint(px, py);
+    const bodyTopY = -m.stemHeight;
+    const bodyRadius = m.stemWidth * 0.5 + padding;
+
+    if (pointToSegmentDistance(local.x, local.y, 0, bodyTopY * 0.92, 0, 0) <= bodyRadius) {
+      return true;
+    }
+
+    if (pointToSegmentDistance(local.x, local.y, 0, bodyTopY, m.hookTipX, m.hookTipY) <= m.hookWidth * 0.5 + padding) {
+      return true;
+    }
+
+    if (((local.x - m.topBeanX) ** 2) / ((m.topBeanRx + padding) ** 2) + ((local.y - m.topBeanY) ** 2) / ((m.topBeanRy + padding) ** 2) <= 1) {
+      return true;
+    }
+
+    const podCenterX = -m.sideBeanOffsetX;
+    const podCenterY = -m.sideBeanOffsetY;
+    if (((local.x - podCenterX) ** 2) / ((m.sideBeanRx + padding) ** 2) + ((local.y - podCenterY) ** 2) / ((m.sideBeanRy + padding) ** 2) <= 1) {
+      return true;
+    }
+
+    return false;
+  }
+
+  draw(context) {
+    context.save();
+    context.translate(this.x, this.displayY);
+    context.rotate(this.rotation);
+    context.scale(this.facing, 1);
+    drawSproutFairyFigure(context, this.metrics, { walkPhase: this.walkPhase });
+    context.restore();
+  }
+}
+
+function createCharacter(type, panelLayout, bounds) {
+  if (type === 'sprout') {
+    return new BeanSproutFairy(panelLayout.sproutMetrics || createSproutMetrics(panelLayout), bounds);
+  }
+  return new SegmentedFish(panelLayout.fishMetrics, bounds);
+}
+
 function rebuildScene() {
   resizeCanvas();
   panel = buildPanel();
   motionBounds = getMotionBounds(panel);
   backdropTexture = createBackdropTexture(W, H);
   paperTexture = createPaperTexture(panel.width, panel.height);
-  fish = new SegmentedFish(panel.fishMetrics, motionBounds);
+  character = createCharacter(selectedCharacter, panel, motionBounds);
   flowTargets = [];
   lastTextFlowUpdate = 0;
   updateTextFlow(performance.now(), true);
@@ -1036,7 +1544,7 @@ function distributeRowSlots(rowSlots, take) {
 }
 
 function getFlowTargets() {
-  if (!panel || !fish) {
+  if (!panel || !character) {
     return [];
   }
 
@@ -1059,7 +1567,7 @@ function getFlowTargets() {
 
     for (let index = rowStart; index < rowEnd; index += 1) {
       const slot = panel.slots[index];
-      if (!fish.contains(slot.x, slot.y, panel.textClearance)) {
+      if (!character.contains(slot.x, slot.y, panel.textClearance)) {
         rowSlots.push(slot);
       }
     }
@@ -1098,7 +1606,7 @@ function getFlowTargets() {
 }
 
 function updateTextFlow(timestamp, force = false) {
-  if (!panel || !fish) {
+  if (!panel || !character) {
     return;
   }
 
@@ -1127,19 +1635,19 @@ function drawText() {
 function loop(timestamp) {
   requestAnimationFrame(loop);
 
-  if (!sceneReady || !panel || !fish) {
+  if (!sceneReady || !panel || !character) {
     return;
   }
 
   const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
   lastTime = timestamp;
   updateFps(dt);
-  fish.update(dt, timestamp);
+  character.update(dt, timestamp);
   updateTextFlow(timestamp);
   drawBackground();
   drawPanel();
   drawText();
-  fish.draw(ctx);
+  character.draw(ctx);
 }
 
 function setInputModalOpen(isOpen) {
@@ -1163,6 +1671,8 @@ function startExperience() {
 
   experienceStarted = true;
   setInputModalOpen(false);
+  const checkedRadio = document.querySelector('input[name="character"]:checked');
+  selectedCharacter = checkedRadio ? checkedRadio.value : 'fish';
   bookTextSource = normalizeSourceText(textInputEl.value);
   rebuildScene();
   sceneReady = true;
@@ -1228,10 +1738,87 @@ textInputEl.addEventListener('keydown', (event) => {
   }
 });
 
+function drawCharacterPreviews() {
+  document.querySelectorAll('.character-preview').forEach((cvs) => {
+    const previewCtx = cvs.getContext('2d');
+    const w = cvs.width;
+    const h = cvs.height;
+    const type = cvs.dataset.character;
+
+    previewCtx.clearRect(0, 0, w, h);
+
+    if (type === 'fish') {
+      previewCtx.save();
+      previewCtx.translate(w * 0.5, h * 0.5);
+      previewCtx.scale(0.55, 0.55);
+
+      previewCtx.beginPath();
+      previewCtx.moveTo(50, 0);
+      previewCtx.quadraticCurveTo(30, -22, -10, -18);
+      previewCtx.quadraticCurveTo(-30, -16, -45, -8);
+      previewCtx.lineTo(-62, -18);
+      previewCtx.lineTo(-55, 0);
+      previewCtx.lineTo(-62, 18);
+      previewCtx.lineTo(-45, 8);
+      previewCtx.quadraticCurveTo(-30, 16, -10, 18);
+      previewCtx.quadraticCurveTo(30, 22, 50, 0);
+      previewCtx.closePath();
+      previewCtx.fillStyle = FISH_FILL;
+      previewCtx.fill();
+      previewCtx.strokeStyle = FISH_STROKE;
+      previewCtx.lineWidth = 1.5;
+      previewCtx.stroke();
+
+      previewCtx.beginPath();
+      previewCtx.moveTo(-5, -16);
+      previewCtx.quadraticCurveTo(-15, -28, -30, -22);
+      previewCtx.strokeStyle = FISH_ACCENT;
+      previewCtx.lineWidth = 2;
+      previewCtx.stroke();
+
+      previewCtx.beginPath();
+      previewCtx.arc(32, -4, 3, 0, Math.PI * 2);
+      previewCtx.fillStyle = FISH_EYE;
+      previewCtx.fill();
+
+      previewCtx.restore();
+    } else if (type === 'sprout') {
+      previewCtx.save();
+      previewCtx.translate(w * 0.44, h * 0.78);
+      drawSproutFairyFigure(previewCtx, {
+        stemHeight: 48,
+        stemWidth: 8,
+        bodyCurve: 1.4,
+        hookTipX: 11,
+        hookTipY: -40,
+        hookWidth: 7.4,
+        topBeanX: 18,
+        topBeanY: -33,
+        topBeanRx: 10,
+        topBeanRy: 8.1,
+        sideBeanOffsetX: 18,
+        sideBeanOffsetY: 7,
+        sideBeanRx: 7,
+        sideBeanRy: 5.4,
+        armLength: 11,
+        leftArmLength: 9,
+        armWidth: 1.7,
+        handSize: 2.3,
+        legLength: 8,
+        legSpread: 3.8,
+        legWidth: 2.1,
+        footSize: 3.1,
+      }, { walkPhase: 0.6 });
+      previewCtx.restore();
+    }
+  });
+}
+
 (async () => {
   await waitForPrimaryFont();
   rebuildScene();
   renderIntroFrame();
+  drawCharacterPreviews();
   startButton.disabled = false;
   appInitialized = true;
 })();

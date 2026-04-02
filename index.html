@@ -28,8 +28,27 @@
       <p class="start-eyebrow">MOTION BOOK</p>
       <h1 id="start-title" class="start-title">文字の海を、選んだ言葉で始める。</h1>
       <p class="start-description">
-        テキスト入力ボタンから文章をコピペ、または入力してからスタートしてください。入力した文字の中を魚が泳ぎます。
+        テキスト入力ボタンから文章をコピペ、または入力してからスタートしてください。入力した文字の中をキャラクターが動きます。
       </p>
+      <div class="character-select" id="character-select">
+        <p class="character-select-label">キャラクターを選ぶ</p>
+        <div class="character-select-options">
+          <label class="character-option">
+            <input type="radio" name="character" value="fish" checked />
+            <span class="character-option-card">
+              <canvas class="character-preview" data-character="fish" width="120" height="80"></canvas>
+              <span class="character-option-name">古代魚</span>
+            </span>
+          </label>
+          <label class="character-option">
+            <input type="radio" name="character" value="sprout" />
+            <span class="character-option-card">
+              <canvas class="character-preview" data-character="sprout" width="120" height="80"></canvas>
+              <span class="character-option-name">モヤシの妖精</span>
+            </span>
+          </label>
+        </div>
+      </div>
       <div class="start-actions">
         <button
           id="toggle-input-button"
