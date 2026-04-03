@@ -19,6 +19,8 @@ const resetConfigButton = document.getElementById('reset-config-button');
 const configFormEl = document.getElementById('config-form');
 const fontSizeInputEl = document.getElementById('font-size-input');
 const fontSizeValueEl = document.getElementById('font-size-value');
+const outlineGapInputEl = document.getElementById('outline-gap-input');
+const outlineGapValueEl = document.getElementById('outline-gap-value');
 const textColorInputEl = document.getElementById('text-color-input');
 const textColorValueEl = document.getElementById('text-color-value');
 const fontFamilyInputEl = document.getElementById('font-family-input');
@@ -39,6 +41,9 @@ const PARCHMENT_SCALE = 1.1;
 const MIN_TEXT_FLOW_INTERVAL_MS = 50;
 const MAX_TEXT_FLOW_INTERVAL_MS = 250;
 const TEXT_CLEARANCE_MULTIPLIER = 1.18;
+const OUTLINE_GAP_BASELINE_PERCENT = 100;
+const MIN_OUTLINE_GAP_PERCENT = 80;
+const MAX_OUTLINE_GAP_PERCENT = 140;
 const FONT_LOAD_TIMEOUT_MS = 3000;
 const RESIZE_DEBOUNCE_MS = 180;
 const SETTINGS_STORAGE_KEY = 'motion-book.settings.v1';
@@ -68,6 +73,7 @@ const FONT_OPTIONS = Object.freeze({
 });
 const DEFAULT_SETTINGS = Object.freeze({
   fontSizePx: FONT_SIZE_BASELINE_PX,
+  textOutlineGapPercent: OUTLINE_GAP_BASELINE_PERCENT,
   textColor: '#2a2130',
   fontFamily: 'kiwi-maru',
   textFlowIntervalMs: 100,
@@ -548,6 +554,10 @@ function getTextClearance(cellWidth, lineHeight) {
   return Math.max(12, (cellWidth * 0.46 + lineHeight * 0.22) * TEXT_CLEARANCE_MULTIPLIER);
 }
 
+function getTextObstacleClearance(cellWidth, lineHeight, outlineGapPercent = settings.textOutlineGapPercent) {
+  return getTextClearance(cellWidth, lineHeight) * (outlineGapPercent / OUTLINE_GAP_BASELINE_PERCENT);
+}
+
 function normalizeSourceText(source) {
   const normalized = `${source || ''}`.replace(/\r\n?/g, '\n').trim();
   return normalized || DEFAULT_BOOK_TEXT_SOURCE;
@@ -613,6 +623,12 @@ function sanitizeSettings(candidate = {}) {
     MIN_FONT_SIZE,
     MAX_FONT_SIZE
   );
+  const outlineGapBase = Math.round(Number(candidate.textOutlineGapPercent) || DEFAULT_SETTINGS.textOutlineGapPercent);
+  const textOutlineGapPercent = clamp(
+    Math.round(outlineGapBase / 5) * 5,
+    MIN_OUTLINE_GAP_PERCENT,
+    MAX_OUTLINE_GAP_PERCENT
+  );
   const intervalBase = Math.round(Number(candidate.textFlowIntervalMs) || DEFAULT_SETTINGS.textFlowIntervalMs);
   const textFlowIntervalMs = clamp(
     Math.round(intervalBase / 10) * 10,
@@ -623,6 +639,7 @@ function sanitizeSettings(candidate = {}) {
 
   return {
     fontSizePx,
+    textOutlineGapPercent,
     textColor: normalizeHexColor(candidate.textColor, DEFAULT_SETTINGS.textColor),
     fontFamily,
     textFlowIntervalMs,
@@ -703,8 +720,19 @@ function formatFontSizeLabel(fontSizePx) {
   return `${fontSizePx} px (${delta > 0 ? `+${delta}` : delta})`;
 }
 
+function formatOutlineGapLabel(percent) {
+  const delta = percent - OUTLINE_GAP_BASELINE_PERCENT;
+
+  if (delta === 0) {
+    return `${percent} % (基準)`;
+  }
+
+  return `${percent} % (${delta > 0 ? `+${delta}` : delta})`;
+}
+
 function updateConfigValueLabels() {
   fontSizeValueEl.textContent = formatFontSizeLabel(Number(fontSizeInputEl.value));
+  outlineGapValueEl.textContent = formatOutlineGapLabel(Number(outlineGapInputEl.value));
   textColorValueEl.textContent = normalizeHexColor(textColorInputEl.value, DEFAULT_SETTINGS.textColor).toUpperCase();
   textIntervalValueEl.textContent = `${textIntervalInputEl.value} ms`;
   paperColorValueEl.textContent = normalizeHexColor(
@@ -716,6 +744,7 @@ function updateConfigValueLabels() {
 function populateConfigForm(nextSettings = settings) {
   const safeSettings = sanitizeSettings(nextSettings);
   fontSizeInputEl.value = String(safeSettings.fontSizePx);
+  outlineGapInputEl.value = String(safeSettings.textOutlineGapPercent);
   textColorInputEl.value = safeSettings.textColor;
   fontFamilyInputEl.value = safeSettings.fontFamily;
   textIntervalInputEl.value = String(safeSettings.textFlowIntervalMs);
@@ -726,6 +755,7 @@ function populateConfigForm(nextSettings = settings) {
 function readConfigForm() {
   return sanitizeSettings({
     fontSizePx: Number(fontSizeInputEl.value),
+    textOutlineGapPercent: Number(outlineGapInputEl.value),
     textColor: textColorInputEl.value,
     fontFamily: fontFamilyInputEl.value,
     textFlowIntervalMs: Number(textIntervalInputEl.value),
@@ -988,20 +1018,22 @@ function createSproutMetrics(panelLayout) {
   };
 }
 
-function estimateBlockedSlots(metrics, cellWidth, lineHeight, layoutCharacter = null) {
+function estimateBlockedSlots(metrics, cellWidth, lineHeight, obstacleClearance, layoutCharacter = null) {
+  const padding = Number.isFinite(obstacleClearance)
+    ? obstacleClearance
+    : getTextObstacleClearance(cellWidth, lineHeight);
   const override =
     (layoutCharacter && typeof layoutCharacter.estimateBlockedSlots === 'function'
-      ? layoutCharacter.estimateBlockedSlots(cellWidth, lineHeight)
+      ? layoutCharacter.estimateBlockedSlots(cellWidth, lineHeight, padding)
       : undefined) ??
     (metrics && typeof metrics.estimateBlockedSlots === 'function'
-      ? metrics.estimateBlockedSlots(cellWidth, lineHeight)
+      ? metrics.estimateBlockedSlots(cellWidth, lineHeight, padding)
       : undefined);
 
   if (Number.isFinite(override)) {
     return Math.max(0, Math.round(override));
   }
 
-  const padding = getTextClearance(cellWidth, lineHeight);
   const cellArea = Math.max(1, cellWidth * lineHeight);
   const paddedLength = metrics.bodyLength + padding * 2.5;
   const paddedWidth = metrics.maxHalfWidth * 2 + padding * 2.25;
@@ -1125,6 +1157,12 @@ function buildPanel() {
   const slotHeight = rows * lineHeight;
   const offsetX = panelRect.innerX + (panelRect.innerWidth - slotWidth) * 0.5;
   const offsetY = panelRect.innerY + (panelRect.innerHeight - slotHeight) * 0.5;
+  const motionEdgeClearance = getTextClearance(cellWidth, lineHeight);
+  const textObstacleClearance = getTextObstacleClearance(
+    cellWidth,
+    lineHeight,
+    settings.textOutlineGapPercent
+  );
   const slots = [];
 
   for (let row = 0; row < rows; row += 1) {
@@ -1139,7 +1177,7 @@ function buildPanel() {
   const fishMetrics = createFishMetrics(panelRect);
   const sproutMetrics = createSproutMetrics(panelRect);
   const activeMetrics = selectedCharacter === 'sprout' ? sproutMetrics : fishMetrics;
-  const blockedSlots = estimateBlockedSlots(activeMetrics, cellWidth, lineHeight);
+  const blockedSlots = estimateBlockedSlots(activeMetrics, cellWidth, lineHeight, textObstacleClearance);
   const spareSlots = Math.max(12, Math.round(slots.length * 0.06));
   const visibleTarget = Math.min(TARGET_VISIBLE_CHARS, Math.max(120, slots.length - blockedSlots - spareSlots));
   const textContent = buildSourceLines(bookTextSource, visibleTarget);
@@ -1160,7 +1198,8 @@ function buildPanel() {
     activeMetrics,
     blockedSlots,
     spareSlots,
-    textClearance: getTextClearance(cellWidth, lineHeight),
+    motionEdgeClearance,
+    textObstacleClearance,
     visibleTarget,
     textLines: textContent.lines,
     textGlyphCount: textContent.glyphCount,
@@ -1183,10 +1222,10 @@ function getMotionBounds(layout, layoutCharacter = null) {
     bottom: metrics.maxHalfWidth * 1.35,
   };
   return {
-    minX: layout.innerX + motionInsets.left + layout.textClearance * 0.55,
-    maxX: layout.innerX + layout.innerWidth - motionInsets.right - layout.textClearance * 0.55,
-    minY: layout.innerY + motionInsets.top + layout.textClearance * 0.35,
-    maxY: layout.innerY + layout.innerHeight - motionInsets.bottom - layout.textClearance * 0.35,
+    minX: layout.innerX + motionInsets.left + layout.motionEdgeClearance * 0.55,
+    maxX: layout.innerX + layout.innerWidth - motionInsets.right - layout.motionEdgeClearance * 0.55,
+    minY: layout.innerY + motionInsets.top + layout.motionEdgeClearance * 0.35,
+    maxY: layout.innerY + layout.innerHeight - motionInsets.bottom - layout.motionEdgeClearance * 0.35,
   };
 }
 
@@ -2125,7 +2164,7 @@ function getFlowTargets() {
     const rowStart = row * panel.cols;
     const rowEnd = Math.min(panel.slots.length, rowStart + panel.cols);
     const rowSlots = panel.slots.slice(rowStart, rowEnd);
-    const blockedRanges = buildBlockedRangesForRow(rowSlots, panel.textClearance);
+    const blockedRanges = buildBlockedRangesForRow(rowSlots, panel.textObstacleClearance);
     const availableRanges = buildAvailableRangesForRow(rowSlots, blockedRanges);
 
     if (!availableRanges.length) {
@@ -2427,6 +2466,7 @@ configFormEl.addEventListener('submit', (event) => {
   event.preventDefault();
 });
 fontSizeInputEl.addEventListener('input', updateConfigValueLabels);
+outlineGapInputEl.addEventListener('input', updateConfigValueLabels);
 textColorInputEl.addEventListener('input', updateConfigValueLabels);
 textIntervalInputEl.addEventListener('input', updateConfigValueLabels);
 paperColorInputEl.addEventListener('input', updateConfigValueLabels);
