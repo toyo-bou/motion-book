@@ -27,12 +27,15 @@ const textIntervalValueEl = document.getElementById('text-interval-value');
 const paperColorInputEl = document.getElementById('paper-color-input');
 const paperColorValueEl = document.getElementById('paper-color-value');
 
-const MIN_FONT_SIZE = 14;
+const FONT_SIZE_BASELINE_PX = 14;
+const LEGACY_DEFAULT_FONT_SIZE_PX = 18;
+const MIN_FONT_SIZE = 10;
 const MAX_FONT_SIZE = 24;
 const LINE_HEIGHT_RATIO = 1.72;
 const CJK_WIDTH_RATIO = 1.28;
 const TARGET_VISIBLE_CHARS = 600;
 const A4_ASPECT_RATIO = 1 / Math.sqrt(2);
+const PARCHMENT_SCALE = 1.1;
 const MIN_TEXT_FLOW_INTERVAL_MS = 50;
 const MAX_TEXT_FLOW_INTERVAL_MS = 250;
 const TEXT_CLEARANCE_MULTIPLIER = 1.18;
@@ -64,11 +67,15 @@ const FONT_OPTIONS = Object.freeze({
   },
 });
 const DEFAULT_SETTINGS = Object.freeze({
-  fontSizePx: 18,
+  fontSizePx: FONT_SIZE_BASELINE_PX,
   textColor: '#2a2130',
   fontFamily: 'kiwi-maru',
   textFlowIntervalMs: 100,
   paperColor: '#f0e6da',
+});
+const LEGACY_DEFAULT_SETTINGS = Object.freeze({
+  ...DEFAULT_SETTINGS,
+  fontSizePx: LEGACY_DEFAULT_FONT_SIZE_PX,
 });
 
 const PANEL_BORDER = 'rgba(120, 90, 108, 0.34)';
@@ -626,13 +633,53 @@ function sanitizeSettings(candidate = {}) {
   };
 }
 
+function migrateLegacyDefaultSettings(rawSettings, safeSettings) {
+  if (!rawSettings || typeof rawSettings !== 'object') {
+    return safeSettings;
+  }
+
+  const normalizedFontSize = Math.round(Number(rawSettings.fontSizePx) || Number.NaN);
+  const normalizedTextColor = normalizeHexColor(rawSettings.textColor, LEGACY_DEFAULT_SETTINGS.textColor);
+  const normalizedFontFamily = FONT_OPTIONS[rawSettings.fontFamily]
+    ? rawSettings.fontFamily
+    : DEFAULT_SETTINGS.fontFamily;
+  const intervalBase = Math.round(Number(rawSettings.textFlowIntervalMs) || LEGACY_DEFAULT_SETTINGS.textFlowIntervalMs);
+  const normalizedTextFlowIntervalMs = clamp(
+    Math.round(intervalBase / 10) * 10,
+    MIN_TEXT_FLOW_INTERVAL_MS,
+    MAX_TEXT_FLOW_INTERVAL_MS
+  );
+  const normalizedPaperColor = normalizeHexColor(
+    rawSettings.paperColor ?? rawSettings.backgroundColor,
+    LEGACY_DEFAULT_SETTINGS.paperColor
+  );
+
+  const isLegacyDefaultSettings =
+    normalizedFontSize === LEGACY_DEFAULT_SETTINGS.fontSizePx &&
+    normalizedTextColor === LEGACY_DEFAULT_SETTINGS.textColor &&
+    normalizedFontFamily === LEGACY_DEFAULT_SETTINGS.fontFamily &&
+    normalizedTextFlowIntervalMs === LEGACY_DEFAULT_SETTINGS.textFlowIntervalMs &&
+    normalizedPaperColor === LEGACY_DEFAULT_SETTINGS.paperColor;
+
+  if (!isLegacyDefaultSettings) {
+    return safeSettings;
+  }
+
+  return {
+    ...safeSettings,
+    fontSizePx: DEFAULT_SETTINGS.fontSizePx,
+  };
+}
+
 function loadSettings() {
   try {
     const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (!raw) {
       return { ...DEFAULT_SETTINGS };
     }
-    return sanitizeSettings(JSON.parse(raw));
+    const parsed = JSON.parse(raw);
+    const safeSettings = sanitizeSettings(parsed);
+    return migrateLegacyDefaultSettings(parsed, safeSettings);
   } catch (error) {
     return { ...DEFAULT_SETTINGS };
   }
@@ -646,8 +693,18 @@ function saveSettings(nextSettings) {
   }
 }
 
+function formatFontSizeLabel(fontSizePx) {
+  const delta = fontSizePx - FONT_SIZE_BASELINE_PX;
+
+  if (delta === 0) {
+    return `${fontSizePx} px (基準)`;
+  }
+
+  return `${fontSizePx} px (${delta > 0 ? `+${delta}` : delta})`;
+}
+
 function updateConfigValueLabels() {
-  fontSizeValueEl.textContent = `${fontSizeInputEl.value} px`;
+  fontSizeValueEl.textContent = formatFontSizeLabel(Number(fontSizeInputEl.value));
   textColorValueEl.textContent = normalizeHexColor(textColorInputEl.value, DEFAULT_SETTINGS.textColor).toUpperCase();
   textIntervalValueEl.textContent = `${textIntervalInputEl.value} ms`;
   paperColorValueEl.textContent = normalizeHexColor(
@@ -931,7 +988,19 @@ function createSproutMetrics(panelLayout) {
   };
 }
 
-function estimateBlockedSlots(metrics, cellWidth, lineHeight) {
+function estimateBlockedSlots(metrics, cellWidth, lineHeight, layoutCharacter = null) {
+  const override =
+    (layoutCharacter && typeof layoutCharacter.estimateBlockedSlots === 'function'
+      ? layoutCharacter.estimateBlockedSlots(cellWidth, lineHeight)
+      : undefined) ??
+    (metrics && typeof metrics.estimateBlockedSlots === 'function'
+      ? metrics.estimateBlockedSlots(cellWidth, lineHeight)
+      : undefined);
+
+  if (Number.isFinite(override)) {
+    return Math.max(0, Math.round(override));
+  }
+
   const padding = getTextClearance(cellWidth, lineHeight);
   const cellArea = Math.max(1, cellWidth * lineHeight);
   const paddedLength = metrics.bodyLength + padding * 2.5;
@@ -954,6 +1023,9 @@ function getPanelRect() {
   const outerMarginX = clamp(W * 0.03, 12, 32);
   const outerMarginTop = clamp(H * 0.07, 52, 82);
   const outerMarginBottom = clamp(H * 0.032, 12, 30);
+  const viewportMarginX = clamp(W * 0.012, 8, 20);
+  const viewportMarginTop = clamp(H * 0.045, 34, 64);
+  const viewportMarginBottom = clamp(H * 0.018, 8, 22);
   const targetAspect = A4_ASPECT_RATIO;
   const isPortrait = H > W || W < 900;
   const availableHeight = Math.max(260, H - outerMarginTop - outerMarginBottom);
@@ -979,8 +1051,15 @@ function getPanelRect() {
   width = Math.min(width, W - outerMarginX * 2);
   height = Math.min(height, availableHeight);
 
+  const maxScaledWidth = Math.max(220, W - viewportMarginX * 2);
+  const maxScaledHeight = Math.max(260, H - viewportMarginTop - viewportMarginBottom);
+  const appliedScale = Math.min(PARCHMENT_SCALE, maxScaledWidth / width, maxScaledHeight / height);
+  width = Math.min(width * appliedScale, maxScaledWidth);
+  height = Math.min(height * appliedScale, maxScaledHeight);
+
   const x = (W - width) * 0.5;
-  const y = outerMarginTop + (availableHeight - height) * 0.5;
+  const centeredY = outerMarginTop + (availableHeight - height) * 0.5;
+  const y = clamp(centeredY, viewportMarginTop, H - height - viewportMarginBottom);
   const paddingX = clamp(width * 0.07, 20, 42);
   const paddingY = clamp(height * 0.055, 20, 48);
   const radius = clamp(Math.min(width, height) * 0.038, 18, 28);
@@ -1088,9 +1167,16 @@ function buildPanel() {
   };
 }
 
-function getMotionBounds(layout) {
+function getMotionBounds(layout, layoutCharacter = null) {
   const metrics = layout.activeMetrics;
-  const motionInsets = metrics.motionInsets || {
+  const overrideInsets =
+    (layoutCharacter && typeof layoutCharacter.getMotionInsets === 'function'
+      ? layoutCharacter.getMotionInsets()
+      : undefined) ??
+    (metrics && typeof metrics.getMotionInsets === 'function'
+      ? metrics.getMotionInsets()
+      : undefined);
+  const motionInsets = overrideInsets || metrics.motionInsets || {
     left: (metrics.headLength || metrics.bodyLength * 0.2) * 0.72,
     right: (metrics.headLength || metrics.bodyLength * 0.2) * 0.72,
     top: metrics.maxHalfWidth * 1.35,
@@ -1710,123 +1796,312 @@ function drawPanel() {
   ctx.restore();
 }
 
-function splitRowIntoSpans(slots) {
-  if (!slots.length) {
+function buildRowRangesFromFlags(rowSlots, blockedFlags, targetBlocked) {
+  if (!rowSlots.length || !blockedFlags.length) {
     return [];
   }
 
-  const spans = [];
-  let currentSpan = [slots[0]];
-  const gapThreshold = panel.cellWidth * 1.45;
+  const ranges = [];
+  let startIndex = -1;
 
-  for (let index = 1; index < slots.length; index += 1) {
-    const slot = slots[index];
-    const previous = slots[index - 1];
+  for (let index = 0; index < rowSlots.length; index += 1) {
+    const matches = Boolean(blockedFlags[index]) === targetBlocked;
 
-    if (slot.x - previous.x > gapThreshold) {
-      spans.push(currentSpan);
-      currentSpan = [slot];
-    } else {
-      currentSpan.push(slot);
+    if (matches) {
+      if (startIndex < 0) {
+        startIndex = index;
+      }
+      continue;
+    }
+
+    if (startIndex >= 0) {
+      ranges.push({
+        startIndex,
+        endIndex: index - 1,
+        slots: rowSlots.slice(startIndex, index),
+        capacity: index - startIndex,
+        leftBlocked: startIndex > 0 ? Boolean(blockedFlags[startIndex - 1]) : false,
+        rightBlocked: Boolean(blockedFlags[index]),
+      });
+      startIndex = -1;
     }
   }
 
-  spans.push(currentSpan);
-  return spans;
+  if (startIndex >= 0) {
+    ranges.push({
+      startIndex,
+      endIndex: rowSlots.length - 1,
+      slots: rowSlots.slice(startIndex),
+      capacity: rowSlots.length - startIndex,
+      leftBlocked: startIndex > 0 ? Boolean(blockedFlags[startIndex - 1]) : false,
+      rightBlocked: false,
+    });
+  }
+
+  return ranges;
 }
 
-function selectSpanSlots(slots, count, align) {
-  if (count <= 0) {
-    return [];
+function markBlockedFlagsFromRange(blockedFlags, rowSlots, range) {
+  if (!range || !blockedFlags.length || !rowSlots.length) {
+    return;
   }
 
-  if (count >= slots.length) {
-    return slots.map((slot) => ({ x: slot.x, y: slot.y }));
+  const hasIndexBounds =
+    Number.isFinite(range.start) && Number.isFinite(range.end)
+      ? { start: range.start, end: range.end }
+      : Number.isFinite(range.startIndex) && Number.isFinite(range.endIndex)
+        ? { start: range.startIndex, end: range.endIndex }
+        : null;
+
+  if (hasIndexBounds) {
+    const startIndex = clamp(Math.floor(Math.min(hasIndexBounds.start, hasIndexBounds.end)), 0, rowSlots.length - 1);
+    const endIndex = clamp(Math.ceil(Math.max(hasIndexBounds.start, hasIndexBounds.end)), 0, rowSlots.length - 1);
+    for (let index = startIndex; index <= endIndex; index += 1) {
+      blockedFlags[index] = true;
+    }
+    return;
   }
 
-  if (align === 'right') {
-    return slots.slice(slots.length - count).map((slot) => ({ x: slot.x, y: slot.y }));
+  const minX =
+    Number.isFinite(range.minX) ? range.minX : Number.isFinite(range.left) ? range.left : undefined;
+  const maxX =
+    Number.isFinite(range.maxX) ? range.maxX : Number.isFinite(range.right) ? range.right : undefined;
+
+  if (!Number.isFinite(minX) || !Number.isFinite(maxX)) {
+    return;
   }
 
-  return slots.slice(0, count).map((slot) => ({ x: slot.x, y: slot.y }));
+  const left = Math.min(minX, maxX);
+  const right = Math.max(minX, maxX);
+  for (let index = 0; index < rowSlots.length; index += 1) {
+    const slotX = rowSlots[index].x;
+    if (slotX >= left && slotX <= right) {
+      blockedFlags[index] = true;
+    }
+  }
 }
 
-function distributeRowSlots(rowSlots, take) {
-  if (!rowSlots.length || take <= 0) {
+function buildBlockedFlagsForRow(rowSlots, inflate) {
+  if (!rowSlots.length || !character) {
     return [];
   }
 
-  const minFragment = 3;
-  const spans = splitRowIntoSpans(rowSlots);
+  const rowY = rowSlots[0].y;
+  const rowBounds = {
+    left: rowSlots[0].x,
+    right: rowSlots[rowSlots.length - 1].x,
+    minX: rowSlots[0].x,
+    maxX: rowSlots[rowSlots.length - 1].x,
+    slots: rowSlots,
+  };
+  const overrideRanges =
+    typeof character.getBlockedRangesAtRow === 'function'
+      ? character.getBlockedRangesAtRow(rowY, inflate, rowBounds)
+      : undefined;
 
-  if (spans.length <= 1) {
-    return selectSpanSlots(rowSlots, take, 'left');
+  if (Array.isArray(overrideRanges)) {
+    const blockedFlags = Array.from({ length: rowSlots.length }, () => false);
+    for (const range of overrideRanges) {
+      markBlockedFlagsFromRange(blockedFlags, rowSlots, range);
+    }
+    return blockedFlags;
   }
 
-  const totalCapacity = spans.reduce((sum, span) => sum + span.length, 0);
-  const spanCounts = spans.map((span) => Math.round((take * span.length) / totalCapacity));
-  let allocated = spanCounts.reduce((sum, count) => sum + count, 0);
+  return rowSlots.map((slot) => character.contains(slot.x, slot.y, inflate));
+}
 
-  for (let index = 0; allocated > take && index < spanCounts.length; index += 1) {
-    if (spanCounts[index] > 0) {
-      spanCounts[index] -= 1;
-      allocated -= 1;
+function buildBlockedRangesForRow(rowSlots, inflate) {
+  const blockedFlags = buildBlockedFlagsForRow(rowSlots, inflate);
+  return buildRowRangesFromFlags(rowSlots, blockedFlags, true);
+}
+
+function buildAvailableRangesForRow(rowSlots, blockedRanges) {
+  if (!rowSlots.length) {
+    return [];
+  }
+
+  const blockedFlags = Array.from({ length: rowSlots.length }, () => false);
+  for (const range of blockedRanges) {
+    for (let index = range.startIndex; index <= range.endIndex; index += 1) {
+      blockedFlags[index] = true;
+    }
+  }
+  return buildRowRangesFromFlags(rowSlots, blockedFlags, false);
+}
+
+function buildRangeSelectionOrder(range) {
+  const slots = range.slots;
+
+  if (!range.rightBlocked) {
+    return slots;
+  }
+
+  if (!range.leftBlocked) {
+    return [...slots].reverse();
+  }
+
+  const ordered = [];
+  let leftIndex = 0;
+  let rightIndex = slots.length - 1;
+
+  while (leftIndex <= rightIndex) {
+    ordered.push(slots[leftIndex]);
+    if (rightIndex !== leftIndex) {
+      ordered.push(slots[rightIndex]);
+    }
+    leftIndex += 1;
+    rightIndex -= 1;
+  }
+
+  return ordered;
+}
+
+function rebalanceSmallFragments(availableRanges, rangeCounts, take) {
+  const minClusterSlots = 3;
+  if (take < minClusterSlots || availableRanges.length <= 1) {
+    return rangeCounts;
+  }
+
+  const balancedCounts = [...rangeCounts];
+
+  for (let index = availableRanges.length - 1; index >= 0; index -= 1) {
+    const fragmentCount = balancedCounts[index];
+    if (fragmentCount <= 0 || fragmentCount >= minClusterSlots) {
+      continue;
+    }
+
+    const neighborIndices = [index - 1, index + 1];
+    for (const neighborIndex of neighborIndices) {
+      if (neighborIndex < 0 || neighborIndex >= availableRanges.length) {
+        continue;
+      }
+
+      const nextCount = balancedCounts[neighborIndex] + fragmentCount;
+      if (nextCount < minClusterSlots || nextCount > availableRanges[neighborIndex].capacity) {
+        continue;
+      }
+
+      balancedCounts[neighborIndex] = nextCount;
+      balancedCounts[index] = 0;
+      break;
     }
   }
 
-  let cursor = 0;
-  let guard = 0;
-  while (allocated < take && guard < spans.length * 4) {
-    if (spanCounts[cursor] < spans[cursor].length) {
-      spanCounts[cursor] += 1;
-      allocated += 1;
-    }
-    cursor = (cursor + 1) % spans.length;
-    guard += 1;
+  return balancedCounts;
+}
+
+function sortSelectedSlotsForReadingOrder(slots) {
+  return [...slots].sort((a, b) => a.x - b.x || a.y - b.y);
+}
+
+function selectLeftToRightSlots(availableRanges, take) {
+  if (!availableRanges.length || take <= 0) {
+    return [];
   }
 
-  if (spanCounts.length >= 2) {
-    const first = 0;
-    const last = spanCounts.length - 1;
+  const selectedSlots = [];
 
-    if (spanCounts[first] > 0 && spanCounts[first] < minFragment && take >= minFragment) {
-      const add = Math.min(minFragment - spanCounts[first], spans[first].length - spanCounts[first]);
-      spanCounts[first] += add;
-      spanCounts[last] = Math.max(0, spanCounts[last] - add);
-    }
-
-    if (spanCounts[last] > 0 && spanCounts[last] < minFragment && take >= minFragment) {
-      const add = Math.min(minFragment - spanCounts[last], spans[last].length - spanCounts[last]);
-      spanCounts[last] += add;
-      spanCounts[first] = Math.max(0, spanCounts[first] - add);
+  for (const range of availableRanges) {
+    for (const slot of range.slots) {
+      selectedSlots.push({ x: slot.x, y: slot.y });
+      if (selectedSlots.length >= take) {
+        return selectedSlots;
+      }
     }
   }
 
-  allocated = spanCounts.reduce((sum, count) => sum + count, 0);
-  for (let index = spanCounts.length - 1; allocated > take && index >= 0; index -= 1) {
-    const removable = Math.min(spanCounts[index], allocated - take);
-    spanCounts[index] -= removable;
-    allocated -= removable;
+  return selectedSlots;
+}
+
+function selectLineStartSlots(availableRanges, take) {
+  if (!availableRanges.length || take <= 0) {
+    return [];
   }
 
-  cursor = 0;
-  guard = 0;
-  while (allocated < take && guard < spans.length * 4) {
-    if (spanCounts[cursor] < spans[cursor].length) {
-      spanCounts[cursor] += 1;
-      allocated += 1;
+  const [firstRange, ...remainingRanges] = availableRanges;
+  const leadingCount = Math.min(take, firstRange.capacity);
+  const leadingSlots = firstRange.slots.slice(0, leadingCount).map((slot) => ({ x: slot.x, y: slot.y }));
+
+  if (leadingSlots.length >= take) {
+    return leadingSlots;
+  }
+
+  const trailingSlots = allocateSlotsAcrossRanges(remainingRanges, take - leadingSlots.length);
+  return sortSelectedSlotsForReadingOrder([...leadingSlots, ...trailingSlots]);
+}
+
+function allocateSlotsAcrossRanges(availableRanges, take) {
+  if (!availableRanges.length || take <= 0) {
+    return [];
+  }
+
+  const totalCapacity = availableRanges.reduce((sum, range) => sum + range.capacity, 0);
+  if (take >= totalCapacity) {
+    return sortSelectedSlotsForReadingOrder(
+      availableRanges.flatMap((range) => range.slots.map((slot) => ({ x: slot.x, y: slot.y })))
+    );
+  }
+
+  const rangeCounts = [];
+  const remainders = [];
+  let allocated = 0;
+
+  for (let index = 0; index < availableRanges.length; index += 1) {
+    const range = availableRanges[index];
+    const exactCount = (take * range.capacity) / totalCapacity;
+    const baseCount = Math.min(range.capacity, Math.floor(exactCount));
+    rangeCounts.push(baseCount);
+    remainders.push({
+      index,
+      remainder: exactCount - baseCount,
+      capacity: range.capacity,
+    });
+    allocated += baseCount;
+  }
+
+  while (allocated < take) {
+    let candidate = null;
+
+    for (const entry of remainders) {
+      if (rangeCounts[entry.index] >= availableRanges[entry.index].capacity) {
+        continue;
+      }
+
+      if (
+        !candidate ||
+        entry.remainder > candidate.remainder ||
+        (entry.remainder === candidate.remainder && entry.capacity > candidate.capacity) ||
+        (entry.remainder === candidate.remainder &&
+          entry.capacity === candidate.capacity &&
+          entry.index < candidate.index)
+      ) {
+        candidate = entry;
+      }
     }
-    cursor = (cursor + 1) % spans.length;
-    guard += 1;
+
+    if (!candidate) {
+      break;
+    }
+
+    rangeCounts[candidate.index] += 1;
+    candidate.remainder = -1;
+    allocated += 1;
   }
 
-  const targets = [];
-  for (let spanIndex = 0; spanIndex < spans.length; spanIndex += 1) {
-    const align = spanIndex === spans.length - 1 ? 'right' : 'left';
-    targets.push(...selectSpanSlots(spans[spanIndex], spanCounts[spanIndex], align));
+  const balancedCounts = rebalanceSmallFragments(availableRanges, rangeCounts, take);
+  const selectedSlots = [];
+
+  for (let index = 0; index < availableRanges.length; index += 1) {
+    const count = balancedCounts[index];
+    if (count <= 0) {
+      continue;
+    }
+
+    const orderedSlots = buildRangeSelectionOrder(availableRanges[index]);
+    selectedSlots.push(...orderedSlots.slice(0, count).map((slot) => ({ x: slot.x, y: slot.y })));
   }
 
-  return targets;
+  return sortSelectedSlotsForReadingOrder(selectedSlots);
 }
 
 function getFlowTargets() {
@@ -1849,16 +2124,11 @@ function getFlowTargets() {
 
     const rowStart = row * panel.cols;
     const rowEnd = Math.min(panel.slots.length, rowStart + panel.cols);
-    const rowSlots = [];
+    const rowSlots = panel.slots.slice(rowStart, rowEnd);
+    const blockedRanges = buildBlockedRangesForRow(rowSlots, panel.textClearance);
+    const availableRanges = buildAvailableRangesForRow(rowSlots, blockedRanges);
 
-    for (let index = rowStart; index < rowEnd; index += 1) {
-      const slot = panel.slots[index];
-      if (!character.contains(slot.x, slot.y, panel.textClearance)) {
-        rowSlots.push(slot);
-      }
-    }
-
-    if (!rowSlots.length) {
+    if (!availableRanges.length) {
       continue;
     }
 
@@ -1869,8 +2139,12 @@ function getFlowTargets() {
       continue;
     }
 
-    const take = Math.min(remainingChars, rowSlots.length);
-    const rowTargets = distributeRowSlots(rowSlots, take);
+    const availableSlots = availableRanges.reduce((sum, range) => sum + range.capacity, 0);
+    const take = Math.min(remainingChars, availableSlots);
+    const rowTargets =
+      lineOffset > 0
+        ? selectLeftToRightSlots(availableRanges, take)
+        : selectLineStartSlots(availableRanges, take);
 
     for (let index = 0; index < rowTargets.length; index += 1) {
       const slot = rowTargets[index];

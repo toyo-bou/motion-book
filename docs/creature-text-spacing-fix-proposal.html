@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>creature-text-spacing-fix-proposal.md</title>
+<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+body {
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+	padding: 0 26px;
+	line-height: var(--vscode-markdown-line-height, 22px);
+	word-wrap: break-word;
+}
+
+#code-csp-warning {
+	position: fixed;
+	top: 0;
+	right: 0;
+	color: white;
+	margin: 16px;
+	text-align: center;
+	font-size: 12px;
+	font-family: sans-serif;
+	background-color:#444444;
+	cursor: pointer;
+	padding: 6px;
+	box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+	text-decoration: none;
+	background-color:#007acc;
+	box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+	margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+	position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+	content: "";
+	display: block;
+	position: absolute;
+	top: 0;
+	left: -12px;
+	height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+	left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+img {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+a {
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 1px solid -webkit-focus-ring-color;
+	outline-offset: -1px;
+}
+
+hr {
+	border: 0;
+	height: 2px;
+	border-bottom: 2px solid;
+}
+
+h1 {
+	padding-bottom: 0.3em;
+	line-height: 1.2;
+	border-bottom-width: 1px;
+	border-bottom-style: solid;
+}
+
+h1, h2, h3 {
+	font-weight: normal;
+}
+
+table {
+	border-collapse: collapse;
+}
+
+table > thead > tr > th {
+	text-align: left;
+	border-bottom: 1px solid;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+	padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+	border-top: 1px solid;
+}
+
+blockquote {
+	margin: 0 7px 0 5px;
+	padding: 0 16px 0 10px;
+	border-left-width: 5px;
+	border-left-style: solid;
+}
+
+code {
+	font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+	font-size: 1em;
+	line-height: 1.357em;
+}
+
+body.wordWrap pre {
+	white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+	padding: 16px;
+	border-radius: 3px;
+	overflow: auto;
+}
+
+pre code {
+	color: var(--vscode-editor-foreground);
+	tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+	background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+	background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+	background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+	border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+	border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+	border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+	border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+	color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+	color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+	color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+	color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+	color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+	color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+	color: #8959a8;
+}
+
+.hljs {
+	display: block;
+	overflow-x: auto;
+	color: #4d4d4c;
+	padding: 0.5em;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Markdown PDF CSS
+ */
+
+ body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+	padding: 0 12px;
+}
+
+pre {
+	background-color: #f8f8f8;
+	border: 1px solid #cccccc;
+	border-radius: 3px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+pre:not(.hljs) {
+	padding: 23px;
+	line-height: 19px;
+}
+
+blockquote {
+	background: rgba(127, 127, 127, 0.1);
+	border-color: rgba(0, 122, 204, 0.5);
+}
+
+.emoji {
+	height: 1.4em;
+}
+
+code {
+	font-size: 14px;
+	line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+	color: #C9AE75; /* Change the old color so it seems less like an error */
+	font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> to insert page break
+-------------------------------------------------------- */
+.page {
+	page-break-after: always;
+}
+
+</style>
+
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
+          ? 'dark'
+          : 'default'
+    });
+  </script>
+<h1 id="%E7%94%9F%E3%81%8D%E7%89%A9%E3%81%A8%E6%96%87%E5%AD%97%E3%81%AE%E8%B7%9D%E9%9B%A2%E3%82%92%E7%AD%89%E9%96%93%E9%9A%94%E3%81%AB%E3%81%99%E3%82%8B%E4%BF%AE%E6%AD%A3%E6%A1%88%E6%9B%B4%E6%96%B0%E7%89%88-2">生き物と文字の距離を等間隔にする修正案（更新版 2）</h1>
+<h2 id="%E7%9B%AE%E7%9A%84">目的</h2>
+<p>生き物の輪郭と文字の間にできる余白を、見た目としてできるだけ等間隔にそろえる。</p>
+<p>この修正案は魚専用ではなく、現在の <code>BeanSproutFairy</code> を含む既存キャラと、将来的な別シルエットにも流用できる形を目指す。</p>
+<h2 id="%E3%81%93%E3%81%AE%E7%89%88%E3%81%A7%E9%87%8D%E8%A6%96%E3%81%99%E3%82%8B%E3%81%93%E3%81%A8">この版で重視すること</h2>
+<p>今回は、見た目改善だけでなく、次も同時に満たす方針を取る。</p>
+<ul>
+<li>既存コードを大きく崩さない</li>
+<li>第 1 段階の実装コストを上げすぎない</li>
+<li>将来のキャラ追加時に修正箇所を増やさない</li>
+<li>役割分担を明確にして保守しやすくする</li>
+</ul>
+<h2 id="%E7%8F%BE%E8%A1%8C%E5%AE%9F%E8%A3%85%E3%81%AE%E6%95%B4%E7%90%86">現行実装の整理</h2>
+<p>現行コードでは、文字配置はすでに <code>fish</code> 直結ではなく <code>character</code> 抽象で動いている。</p>
+<ul>
+<li><code>SegmentedFish</code> と <code>BeanSproutFairy</code> はどちらも <code>update()</code> / <code>draw()</code> / <code>contains()</code> を持つ</li>
+<li>レイアウト側は <code>character.contains(slot.x, slot.y, panel.textClearance)</code> を使って文字スロットを除外している</li>
+<li><code>getFlowTargets()</code> は <code>updateTextFlow()</code> の再計算時にだけ走る</li>
+<li><code>distributeRowSlots()</code> は span ごとの比例配分と、先頭左寄せ / 最後右寄せで文字位置を決めている</li>
+<li>空行は <code>textLines</code> 上で保持され、表示行を 1 行消費する</li>
+</ul>
+<p>問題の本質は、魚依存そのものではなく次の点にある。</p>
+<ul>
+<li><code>contains()</code> が真偽値しか返さないため、輪郭からの距離差を扱えない</li>
+<li>span の選び方が輪郭境界ではなく左右端基準なので、輪郭近傍に不自然な空きが残る</li>
+<li>改行や空行の保持は現行コードにあるが、提案として明文化されていない</li>
+<li><code>estimateBlockedSlots()</code> と <code>getMotionBounds()</code> にも形状依存が残っている</li>
+</ul>
+<h2 id="%E7%B5%90%E8%AB%96">結論</h2>
+<p>第 1 段階では、<code>sampleSignedDistance()</code> を必須にしない。</p>
+<p>先にやるべきなのは、既存の <code>contains()</code> を再利用して、行ごとの禁止区間を安定して作ること。</p>
+<p>具体的には:</p>
+<ul>
+<li>新しい実行時基底クラスは導入しない</li>
+<li>第 1 段階では <code>character.contains()</code> を使った共通ヘルパーで禁止区間を作る</li>
+<li>文字は「障害物に接する境界側」から採用スロットを選ぶ</li>
+<li>ただし最終的な文字順は必ず <code>x</code> 昇順に保つ</li>
+<li>明示改行と空行の仕様は現行動作を維持する</li>
+<li><code>sampleSignedDistance()</code> は第 2 段階以降の任意拡張に後ろ倒しする</li>
+</ul>
+<p>これが、見た目改善とメンテナンス性の両立として最も現実的。</p>
+<h2 id="%E3%83%A1%E3%83%B3%E3%83%86%E3%83%8A%E3%83%B3%E3%82%B9%E6%96%B9%E9%87%9D">メンテナンス方針</h2>
+<p>この修正では、保守性のために次を原則にする。</p>
+<h3 id="1-%E5%AE%9F%E8%A1%8C%E6%99%82%E3%81%AE%E5%A5%91%E7%B4%84%E9%9D%A2%E3%81%AF%E6%9C%80%E5%B0%8F%E9%99%90%E3%81%AB%E4%BF%9D%E3%81%A4">1. 実行時の契約面は最小限に保つ</h3>
+<p>JavaScript では interface 強制がないため、第 1 段階で <code>LayoutObstacleLike</code> のような基底クラスを実コードに追加する必要はない。</p>
+<p>今回は、ドキュメント上の「契約」としてだけ定義し、実コードでは既存の <code>SegmentedFish</code> / <code>BeanSproutFairy</code> をそのまま使う。</p>
+<h3 id="2-%E5%85%B1%E9%80%9A%E3%83%AD%E3%82%B8%E3%83%83%E3%82%AF%E3%81%AF%E3%83%AC%E3%82%A4%E3%82%A2%E3%82%A6%E3%83%88%E5%81%B4%E3%81%AB%E5%AF%84%E3%81%9B%E3%82%8B">2. 共通ロジックはレイアウト側に寄せる</h3>
+<p>禁止区間の計算を最初から各キャラに実装すると、形状が増えるたびに重複実装が増える。</p>
+<p>そのため第 1 段階では:</p>
+<ul>
+<li><code>contains()</code> を使った共通ヘルパーをレイアウト側に置く</li>
+<li>キャラ固有の最適化は、必要になってから optional override として追加する</li>
+</ul>
+<h3 id="3-%E5%8D%98%E4%BD%8D%E3%81%AE%E9%81%95%E3%81%86%E5%80%A4%E3%82%92%E6%B7%B7%E3%81%9C%E3%81%AA%E3%81%84">3. 単位の違う値を混ぜない</h3>
+<p>名前と返り値の単位は一致させる。</p>
+<ul>
+<li>スロット数を返すなら <code>estimateBlockedSlots()</code></li>
+<li>面積を返すなら <code>estimateBlockedArea()</code></li>
+</ul>
+<p>今回は現行コードとの整合を優先し、<code>estimateBlockedSlots()</code> の名前を維持する。</p>
+<h3 id="4-%E5%B0%8F%E3%81%95%E3%81%AA%E7%B4%94%E9%96%A2%E6%95%B0%E3%81%B8%E5%88%86%E5%89%B2%E3%81%99%E3%82%8B">4. 小さな純関数へ分割する</h3>
+<p>保守しやすくするため、<code>getFlowTargets()</code> へ複雑な条件を直接書き足さない。</p>
+<p>分ける候補:</p>
+<ul>
+<li><code>buildBlockedRangesForRow(...)</code></li>
+<li><code>buildAvailableRangesForRow(...)</code></li>
+<li><code>allocateSlotsAcrossRanges(...)</code></li>
+<li><code>rebalanceSmallFragments(...)</code></li>
+<li><code>sortSelectedSlotsForReadingOrder(...)</code></li>
+</ul>
+<p>この形なら、将来 <code>main.js</code> から分離する時も安全に切り出せる。</p>
+<h3 id="5-%E6%97%A9%E3%81%99%E3%81%8E%E3%82%8B%E3%83%A2%E3%82%B8%E3%83%A5%E3%83%BC%E3%83%AB%E5%88%86%E5%89%B2%E3%82%92%E3%81%97%E3%81%AA%E3%81%84">5. 早すぎるモジュール分割をしない</h3>
+<p>今回の変更だけで <code>layout/</code> や <code>obstacles/</code> に分けると、責務整理より移動コストが先に立つ可能性が高い。</p>
+<p>まずは <code>main.js</code> 内で純関数として整理し、仕様が固まった時点で分離する方が保守しやすい。</p>
+<h2 id="%E3%83%89%E3%82%AD%E3%83%A5%E3%83%A1%E3%83%B3%E3%83%88%E4%B8%8A%E3%81%AE%E5%A5%91%E7%B4%84">ドキュメント上の契約</h2>
+<p>以下は実行時の基底クラスではなく、設計上の契約を説明する擬似 API である。</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">const</span> CharacterLayoutContract = {
+  update(dt, timestamp) {},
+  draw(ctx) {},
+
+  <span class="hljs-comment">// 第 1 段階で必須</span>
+  contains(x, y, padding = <span class="hljs-number">0</span>) {
+    <span class="hljs-keyword">return</span> <span class="hljs-literal">false</span>;
+  },
+
+  <span class="hljs-comment">// 第 2 段階以降の任意最適化</span>
+  getBlockedRangesAtRow(y, inflate, rowBounds) {
+    <span class="hljs-keyword">return</span> <span class="hljs-literal">undefined</span>;
+  },
+
+  <span class="hljs-comment">// buildPanel 用の任意最適化</span>
+  estimateBlockedSlots(cellWidth, lineHeight) {
+    <span class="hljs-keyword">return</span> <span class="hljs-literal">undefined</span>;
+  },
+
+  <span class="hljs-comment">// getMotionBounds 用の任意最適化</span>
+  getMotionInsets() {
+    <span class="hljs-keyword">return</span> <span class="hljs-literal">undefined</span>;
+  },
+
+  <span class="hljs-comment">// 将来の高精度化用。第 1 段階では必須ではない</span>
+  sampleSignedDistance(x, y) {
+    <span class="hljs-keyword">return</span> <span class="hljs-literal">undefined</span>;
+  },
+};
+</div></code></pre>
+<p>重要なのは次の整理である。</p>
+<ul>
+<li>第 1 段階の必須契約は <code>contains()</code> だけ</li>
+<li>他は optional capability として扱う</li>
+<li>override が無ければ、レイアウト側の共通ヘルパーまたは既存ロジックへフォールバックする</li>
+</ul>
+<h2 id="%E7%AC%AC-1-%E6%AE%B5%E9%9A%8E%E3%81%AE%E6%8E%A8%E5%A5%A8%E5%AE%9F%E8%A3%85">第 1 段階の推奨実装</h2>
+<h3 id="1-%E8%A8%88%E7%AE%97%E3%82%BF%E3%82%A4%E3%83%9F%E3%83%B3%E3%82%B0">1. 計算タイミング</h3>
+<p>禁止区間の計算は、毎描画フレームではなく <code>updateTextFlow()</code> の再計算時だけ行う。</p>
+<p>つまり:</p>
+<ul>
+<li><code>drawText()</code> 中では計算しない</li>
+<li><code>character.update()</code> のたびに直接再計算しない</li>
+<li>既存の <code>textFlowIntervalMs</code> ごとの更新タイミングにそろえる</li>
+</ul>
+<p>これで、現行の負荷特性を大きく崩さない。</p>
+<h3 id="2-%E7%A6%81%E6%AD%A2%E5%8C%BA%E9%96%93%E3%81%AE%E4%BD%9C%E3%82%8A%E6%96%B9">2. 禁止区間の作り方</h3>
+<p>第 1 段階では、<code>sampleSignedDistance()</code> を使わず、行スロットをもとに禁止区間を作る。</p>
+<p>推奨方法:</p>
+<ol>
+<li>対象行の <code>rowSlots</code> を取得する</li>
+<li>各スロット中心について <code>character.contains(slot.x, slot.y, panel.textClearance)</code> を評価する</li>
+<li>blocked なスロットを連続区間としてまとめる</li>
+<li>その blocked 区間から available 区間を作る</li>
+</ol>
+<p>この方式の利点:</p>
+<ul>
+<li>既存の <code>contains()</code> をそのまま再利用できる</li>
+<li>キャラ側へ新規メソッドをすぐ要求しない</li>
+<li>計算単位が現在のスロット粒度と一致する</li>
+</ul>
+<h3 id="3-optional-override-%E3%81%AE%E6%89%B1%E3%81%84">3. optional override の扱い</h3>
+<p>将来、キャラ側でより効率よく禁止区間を返せるなら、<code>getBlockedRangesAtRow()</code> を optional override として使ってよい。</p>
+<p>ただし第 1 段階では、これを必須にしない。</p>
+<p>優先順:</p>
+<ol>
+<li><code>character.getBlockedRangesAtRow?.(...)</code></li>
+<li>無ければレイアウト側の <code>contains()</code> ベース共通ヘルパー</li>
+</ol>
+<h3 id="4-%E4%BD%BF%E7%94%A8%E5%8F%AF%E8%83%BD%E5%8C%BA%E9%96%93%E3%81%A7%E3%81%AE%E3%82%B9%E3%83%AD%E3%83%83%E3%83%88%E9%81%B8%E6%8A%9E">4. 使用可能区間でのスロット選択</h3>
+<p>文字の配置は、区間ごとの「障害物に接する側」から採用スロットを選ぶ。</p>
+<p>判定ルール:</p>
+<ul>
+<li>available 区間の左境界が blocked 区間の右境界に接していれば、その available 区間は障害物の右側にあるものとして左端から取る</li>
+<li>available 区間の右境界が blocked 区間の左境界に接していれば、その available 区間は障害物の左側にあるものとして右端から取る</li>
+<li>両側が blocked 区間に接している場合は、より近い境界側から取る</li>
+<li>距離が同じなら左境界側を優先する</li>
+<li>その行に blocked 区間が無い場合は、現行互換で左端から取る</li>
+<li>ただし同一論理行の継続表示行では、輪郭寄せより行頭の読みやすさを優先し、available 区間を <code>x</code> 昇順で使って左端から詰める</li>
+</ul>
+<p>例:</p>
+<ul>
+<li>生き物の左側にある available 区間なら右端から取る</li>
+<li>生き物の右側にある available 区間なら左端から取る</li>
+<li>2 つの blocked 区間の間にある available 区間なら、より近い障害物境界側から優先して取る</li>
+<li>ただし前の表示行からの継続文字列なら、その表示行の先頭文字は最も左の available slot から置く</li>
+</ul>
+<p>最後のケースは、現行キャラで常時発生することを前提にはしない。</p>
+<p>ただし第 1 段階でも、blocked 区間が 1 個とは限らない一般形として扱い、キャラ固有の特例分岐を増やさない。</p>
+<p>ただし、採用後は必ず <code>x</code> 昇順に戻し、その順で文字を入れる。</p>
+<p>これにより:</p>
+<ul>
+<li>視覚上は輪郭側へ詰まる</li>
+<li>読順は壊れない</li>
+<li>フレームごとの文字入れ替わりを避けやすい</li>
+</ul>
+<h3 id="5-minfragment-%E3%81%AE%E6%89%B1%E3%81%84">5. <code>minFragment</code> の扱い</h3>
+<p>現行の <code>minFragment = 3</code> は、1 文字や 2 文字だけの孤立スパンを避けるための視覚的な制約である。</p>
+<p>第 1 段階では、これを即廃止しない。</p>
+<p>ただし、現行の「最初と最後だけを見る」ロジックから、より中立的な扱いへ変える。</p>
+<p>推奨ルール:</p>
+<ul>
+<li><code>minFragment</code> は <code>minClusterSlots</code> として残す</li>
+<li><code>take &gt;= 3</code> の時だけ有効にする</li>
+<li>ある区間への割当が 1 または 2 で、隣接区間へ逃がせるなら再配分する</li>
+<li>逃がし先が無い場合や、総文字数が少ない場合は 1 や 2 を許容する</li>
+</ul>
+<p>これで、短い行の自然さとルールの単純さの両方を保てる。</p>
+<h3 id="6-%E6%94%B9%E8%A1%8C%E3%81%A8%E7%A9%BA%E8%A1%8C%E3%81%AE%E6%89%B1%E3%81%84">6. 改行と空行の扱い</h3>
+<p>現行の動作を仕様として固定する。</p>
+<ul>
+<li><code>textLines</code> は入力テキストの改行単位を保持する</li>
+<li>空行は <code>[]</code> として 1 行ぶん消費する</li>
+<li>連続空行は圧縮しない</li>
+<li>ある表示行の全スロットが blocked の場合、その表示行だけをスキップし、論理行は消費しない</li>
+<li>ある論理行の残り文字は次の表示行へ送ってよい</li>
+<li>継続表示行の先頭文字は、その表示行で最も左の available slot から置く</li>
+<li>ただし次の論理行を前行の余白へ流し込まない</li>
+<li>行数が足りなければ後続の論理行を落としてよい</li>
+<li>入力文字数が少ないときでも補完やループはしない</li>
+</ul>
+<h3 id="7-estimateblockedslots-%E3%81%AE%E6%89%B1%E3%81%84">7. <code>estimateBlockedSlots()</code> の扱い</h3>
+<p>この修正では、面積ベースの新 API は導入しない。</p>
+<p>代わりに:</p>
+<ul>
+<li>現行の <code>estimateBlockedSlots()</code> を名称ごと維持する</li>
+<li>将来キャラ側で上書きしたい場合は <code>character.estimateBlockedSlots?.(cellWidth, lineHeight)</code> を許可する</li>
+<li>override が無ければ既存ロジックを使う</li>
+</ul>
+<p>これで単位の混乱を避けられる。</p>
+<p>なお、現行の関数版は <code>estimateBlockedSlots(metrics, cellWidth, lineHeight)</code> だが、メソッド化する場合は各キャラが自身の <code>metrics</code> を参照する前提なので、シグネチャ差異は意図的である。</p>
+<h3 id="8-getmotionbounds-%E3%81%AE%E6%89%B1%E3%81%84">8. <code>getMotionBounds()</code> の扱い</h3>
+<p>移動範囲も、同じ方針で optional override 化できる。</p>
+<ul>
+<li><code>character.getMotionInsets?.()</code></li>
+<li>無ければ現行の metrics ベース計算</li>
+</ul>
+<p>ここも第 1 段階で大きく構造変更せず、差し替え点だけ明確にする。</p>
+<h2 id="%E7%AC%AC-2-%E6%AE%B5%E9%9A%8E%E3%81%AE%E4%BB%BB%E6%84%8F%E6%94%B9%E5%96%84">第 2 段階の任意改善</h2>
+<p>第 1 段階で見た目が十分改善するなら、ここへ進まなくてもよい。</p>
+<p>必要になった時だけ、次を追加する。</p>
+<ul>
+<li><code>character.getBlockedRangesAtRow()</code> の個別最適化</li>
+<li><code>character.estimateBlockedSlots()</code> の個別最適化</li>
+<li><code>character.getMotionInsets()</code> の個別最適化</li>
+<li>純関数群の <code>layout/</code> への切り出し</li>
+</ul>
+<p>この段階でも、まだ <code>sampleSignedDistance()</code> は必須ではない。</p>
+<h2 id="%E7%AC%AC-3-%E6%AE%B5%E9%9A%8E%E3%81%AE%E9%AB%98%E7%B2%BE%E5%BA%A6%E5%8C%96">第 3 段階の高精度化</h2>
+<p>判定輪郭と描画輪郭の差が目立ち、第 1 段階では視覚品質が足りない場合だけ、距離ベースへ進む。</p>
+<p>この段階で初めて、<code>sampleSignedDistance()</code> を導入候補にする。</p>
+<h3 id="samplesigneddistance-%E3%81%AB%E9%96%A2%E3%81%99%E3%82%8B%E6%B3%A8%E6%84%8F"><code>sampleSignedDistance()</code> に関する注意</h3>
+<p>これは実装コストが高い。</p>
+<ul>
+<li><code>BeanSproutFairy</code> のような複合形状では、boolean 判定より明確に難しい</li>
+<li>楕円距離は単純な解析式で済まない</li>
+<li>各パーツの合成も設計が必要</li>
+</ul>
+<p>したがって、第 1 段階で必須にしない。</p>
+<h3 id="glyphradius-%E3%81%AE%E6%89%B1%E3%81%84"><code>glyphRadius</code> の扱い</h3>
+<p><code>glyphRadius</code> は距離ベースへ進んだ時だけ使う。</p>
+<p>第 1 段階では、<code>panel.textClearance</code> をそのまま inflate 値として使えばよい。</p>
+<p>第 3 段階で導入する場合の暫定式は次とする。</p>
+<pre class="hljs"><code><div><span class="hljs-keyword">const</span> glyphRadius = <span class="hljs-built_in">Math</span>.min(cellWidth, lineHeight) * <span class="hljs-number">0.25</span>;
+<span class="hljs-keyword">const</span> inflate = clearance + glyphRadius;
+</div></code></pre>
+<p>この値は厳密解ではなく、まずは視覚調整用の近似値として扱う。</p>
+<h2 id="%E3%83%91%E3%83%95%E3%82%A9%E3%83%BC%E3%83%9E%E3%83%B3%E3%82%B9%E6%96%B9%E9%87%9D">パフォーマンス方針</h2>
+<p>第 1 段階では、性能面も保守的に扱う。</p>
+<ul>
+<li>禁止区間計算は <code>updateTextFlow()</code> のタイミングでのみ実行する</li>
+<li><code>sampleSignedDistance()</code> を全スロットへ毎回かけることはしない</li>
+<li>まずは <code>contains()</code> ベースで行ごとの blocked / available を作る</li>
+<li>キャッシュは「1 回の再計算中の局所キャッシュ」までに留める</li>
+<li>キャラは常に動いているため、フレームをまたぐ複雑なキャッシュは第 1 段階では入れない</li>
+</ul>
+<p>補足:</p>
+<ul>
+<li>行ベースの区間化は、実装次第では現行より効率化する可能性がある</li>
+<li>ただし無理に最適化を先行させず、まずはロジックを単純化してから測る</li>
+</ul>
+<h2 id="%E5%A4%89%E6%9B%B4%E5%AF%BE%E8%B1%A1">変更対象</h2>
+<p>第 1 段階で主に触るのは次。</p>
+<ul>
+<li><code>getFlowTargets()</code></li>
+<li><code>splitRowIntoSpans()</code> 相当の row 区間化ロジック</li>
+<li><code>selectSpanSlots()</code> / <code>distributeRowSlots()</code> 相当の割当ロジック</li>
+<li><code>estimateBlockedSlots()</code></li>
+<li><code>getMotionBounds()</code></li>
+</ul>
+<p>必要なら追加する純関数:</p>
+<ul>
+<li><code>buildBlockedRangesForRow(...)</code></li>
+<li><code>buildAvailableRangesForRow(...)</code></li>
+<li><code>allocateSlotsAcrossRanges(...)</code></li>
+<li><code>rebalanceSmallFragments(...)</code></li>
+<li><code>sortSelectedSlotsForReadingOrder(...)</code></li>
+</ul>
+<p>想定している対応関係は次の通り。</p>
+<ul>
+<li><code>buildAvailableRangesForRow(...)</code> は、現行の <code>splitRowIntoSpans()</code> を置き換える</li>
+<li><code>allocateSlotsAcrossRanges(...)</code> は、現行の <code>selectSpanSlots()</code> と <code>distributeRowSlots()</code> の責務を吸収する</li>
+<li><code>rebalanceSmallFragments(...)</code> は、現行の <code>minFragment</code> 調整の置き換えである</li>
+</ul>
+<p><code>SegmentedFish</code> と <code>BeanSproutFairy</code> は、第 1 段階では無改造または最小変更に留める方が保守しやすい。</p>
+<h2 id="%E5%8F%97%E3%81%91%E5%85%A5%E3%82%8C%E6%9D%A1%E4%BB%B6">受け入れ条件</h2>
+<ul>
+<li><code>SegmentedFish</code> と <code>BeanSproutFairy</code> が同じレイアウト経路で動く</li>
+<li>第 1 段階の必須契約は <code>contains()</code> のままでよい</li>
+<li>生き物近傍の文字間隔が現状より視覚的に均一になる</li>
+<li>行内の文字順が左から右で安定する</li>
+<li>フレーム間で文字の並び替わりが起きにくい</li>
+<li>改行が多い文章でも空行と行順が維持される</li>
+<li>連続空行を含む文章でも空行が詰められない</li>
+<li>全スロットが blocked の表示行でも、論理行の文字が不正に消費されない</li>
+<li>継続表示行の先頭文字が不自然に中央寄りから始まらない</li>
+<li>短い行で 1 文字だけの不自然な孤立スパンが増えない</li>
+<li>狭い画面と広い画面の両方で破綻しない</li>
+<li>新しいキャラを追加する時、最初は <code>contains()</code> だけあればレイアウトへ参加できる</li>
+</ul>
+<h2 id="%E6%A4%9C%E8%A8%BC%E8%A6%B3%E7%82%B9">検証観点</h2>
+<p>最低限、次で確認する。</p>
+<ul>
+<li><code>fish</code></li>
+<li><code>sprout</code></li>
+<li>短文</li>
+<li>長文</li>
+<li>改行が多い文章</li>
+<li>連続空行を含む文章</li>
+<li>横幅の狭い画面</li>
+<li>横幅の広い画面</li>
+</ul>
+<p>見るべき点:</p>
+<ul>
+<li>輪郭近傍の不自然な空きセルが減っているか</li>
+<li>文字順が崩れていないか</li>
+<li>継続表示行の先頭が左から始まっているか</li>
+<li>空行がつぶれていないか</li>
+<li>全 blocked 行で文字が不正に消費されていないか</li>
+<li>1 文字や 2 文字だけの孤立スパンが増えていないか</li>
+<li>キャラ追加時にレイアウト側の分岐が増えすぎていないか</li>
+</ul>
+<h2 id="%E3%83%AA%E3%82%B9%E3%82%AF">リスク</h2>
+<ul>
+<li>第 1 段階では、描画輪郭とのずれがまだ残る</li>
+<li><code>contains()</code> ベースでは、曲線輪郭に対する厳密な等距離までは保証できない</li>
+<li>小断片の再配分ルールを複雑にしすぎると、逆に保守性が落ちる</li>
+<li>高精度化を急ぐと、<code>sampleSignedDistance()</code> 実装でコストが跳ね上がる</li>
+</ul>
+<h2 id="%E3%81%BE%E3%81%9A%E5%85%A5%E3%82%8C%E3%82%8B%E3%81%B9%E3%81%8D%E6%9C%80%E5%B0%8F%E4%BF%AE%E6%AD%A3">まず入れるべき最小修正</h2>
+<p>最初に入れるべきなのは次の 5 点。</p>
+<ul>
+<li><code>contains()</code> ベースで行ごとの禁止区間を作る共通ヘルパーを追加する</li>
+<li><code>getFlowTargets()</code> を禁止区間ベースへ変更する</li>
+<li>採用スロットは輪郭境界基準で選び、最終的に <code>x</code> 昇順へ戻す</li>
+<li>ただし継続表示行の先頭だけは左端から始める</li>
+<li><code>minFragment</code> を中立的な <code>minClusterSlots</code> ルールへ置き換える</li>
+<li>改行と空行の保持を受け入れ条件に含める</li>
+</ul>
+<p>この形なら、見た目改善、実装負荷、保守性のバランスが最もよい。</p>
+
+</body>
+</html>
