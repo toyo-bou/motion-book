@@ -97,7 +97,11 @@ body.is-running #back-button {
   background:
     linear-gradient(180deg, rgba(22, 18, 36, 0.18), rgba(20, 16, 32, 0.5)),
     radial-gradient(circle at top, rgba(180, 140, 160, 0.06), transparent 38%);
-  transition: opacity 240ms ease, visibility 240ms ease;
+  transition:
+    opacity 240ms ease,
+    visibility 240ms ease,
+    background 240ms ease,
+    padding 240ms ease;
 }
 
 #start-screen.is-hidden {
@@ -120,6 +124,11 @@ body.is-running #back-button {
     0 28px 72px rgba(18, 14, 28, 0.24),
     inset 0 1px 0 rgba(255, 255, 255, 0.32);
   backdrop-filter: blur(18px);
+  transition:
+    transform 260ms ease,
+    width 260ms ease,
+    box-shadow 220ms ease,
+    opacity 220ms ease;
 }
 
 .start-card::before,
@@ -319,6 +328,57 @@ body.is-running #back-button {
 
 .config-modal-card {
   width: min(620px, 100%);
+}
+
+@media (min-width: 1100px) {
+  body.is-config-open #start-screen {
+    place-items: center start;
+    padding-left: clamp(28px, 5vw, 84px);
+    padding-right: clamp(380px, 32vw, 470px);
+    background:
+      linear-gradient(90deg, rgba(22, 18, 36, 0.03), rgba(20, 16, 32, 0.07) 58%, rgba(20, 16, 32, 0.16) 100%),
+      radial-gradient(circle at 34% 24%, rgba(180, 140, 160, 0.05), transparent 42%);
+  }
+
+  body.is-config-open .start-card {
+    width: min(520px, 100%);
+    transform: translateX(clamp(0px, 1.5vw, 18px));
+    box-shadow:
+      0 24px 56px rgba(18, 14, 28, 0.18),
+      inset 0 1px 0 rgba(255, 255, 255, 0.32);
+  }
+
+  body.is-config-open #config-modal {
+    place-items: stretch end;
+    padding: clamp(14px, 2vw, 24px);
+    overflow: hidden;
+  }
+
+  body.is-config-open #config-modal .app-modal-backdrop {
+    background: linear-gradient(
+      90deg,
+      rgba(16, 14, 28, 0) 0%,
+      rgba(16, 14, 28, 0.015) 46%,
+      rgba(16, 14, 28, 0.08) 72%,
+      rgba(16, 14, 28, 0.18) 100%
+    );
+    backdrop-filter: none;
+  }
+
+  body.is-config-open .config-modal-card {
+    align-self: stretch;
+    justify-self: end;
+    width: min(430px, 100%);
+    height: 100%;
+    max-height: none;
+    gap: 10px;
+    padding: clamp(20px, 2vw, 30px);
+    border-radius: 30px;
+    box-shadow:
+      0 24px 56px rgba(16, 12, 24, 0.22),
+      inset 0 1px 0 rgba(255, 255, 255, 0.36),
+      inset 0 2px 0 var(--accent-rose);
+  }
 }
 
 .app-modal-header {

@@ -137,6 +137,9 @@ let lastTextFlowUpdate = 0;
 let appInitialized = false;
 let experienceStarted = false;
 let animationFrameId = 0;
+let configSessionStartSettings = null;
+let configPreviewToken = 0;
+let particleSystem = null;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -156,6 +159,21 @@ function shortestAngleDiff(from, to) {
 
 function randomBetween(min, max) {
   return min + Math.random() * (max - min);
+}
+
+function createSeededRandom(seed) {
+  let state = seed >>> 0;
+  return () => {
+    state += 0x6d2b79f5;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function seededBetween(random, min, max) {
+  return min + random() * (max - min);
 }
 
 function distance(a, b) {
@@ -484,34 +502,279 @@ function traceClosedSmoothPath(context, points) {
   context.closePath();
 }
 
+function createParchmentEdgePoint(axis, edgePosition, basePosition, offset, inwardSign) {
+  if (axis === 'horizontal') {
+    return {
+      x: edgePosition,
+      y: basePosition + offset * inwardSign,
+    };
+  }
+
+  return {
+    x: basePosition + offset * inwardSign,
+    y: edgePosition,
+  };
+}
+
+function createParchmentWearMarks(random, amplitude, options = {}) {
+  const {
+    countRange = [1, 3],
+    widthRange = [0.08, 0.18],
+    depthRange = [0.22, 0.58],
+    centerPadding = 0.12,
+    focusCenter = null,
+    focusSpread = 0.18,
+    focusMix = 0,
+  } = options;
+  const [minCount, maxCount] = countRange;
+  const count = Math.max(0, Math.floor(seededBetween(random, minCount, maxCount + 0.999)));
+  const marks = [];
+
+  for (let index = 0; index < count; index += 1) {
+    const baseCenter = seededBetween(random, centerPadding, 1 - centerPadding);
+    const focusedCenter = focusCenter == null
+      ? baseCenter
+      : clamp(
+        focusCenter + seededBetween(random, -focusSpread, focusSpread),
+        centerPadding,
+        1 - centerPadding
+      );
+    marks.push({
+      center: lerp(baseCenter, focusedCenter, focusMix),
+      width: seededBetween(random, widthRange[0], widthRange[1]),
+      depth: amplitude * seededBetween(random, depthRange[0], depthRange[1]),
+    });
+  }
+
+  return marks.sort((a, b) => a.center - b.center);
+}
+
+function sampleParchmentWear(progress, marks) {
+  let total = 0;
+
+  for (const mark of marks) {
+    const distance = Math.abs(progress - mark.center);
+    if (distance >= mark.width) {
+      continue;
+    }
+
+    const normalized = 1 - distance / mark.width;
+    total += mark.depth * normalized * normalized * (0.58 + normalized * 0.42);
+  }
+
+  return total;
+}
+
+function createSoftParchmentEdge(random, options) {
+  const {
+    axis,
+    start,
+    end,
+    basePosition,
+    inwardSign,
+    amplitude,
+    waveCount,
+    sampleCount,
+    outwardRatio = 0.42,
+    inwardRatio = 0.9,
+    biasDirection = 0,
+    biasCenter = null,
+    reverse = false,
+  } = options;
+
+  const edgePoints = [];
+  const primaryPhase = seededBetween(random, -Math.PI, Math.PI);
+  const secondaryPhase = seededBetween(random, -Math.PI, Math.PI);
+  const driftPhase = seededBetween(random, -Math.PI, Math.PI);
+  const startFadeSpan = seededBetween(random, 0.12, 0.22);
+  const endFadeSpan = seededBetween(random, 0.12, 0.24);
+  const resolvedBiasCenter =
+    biasCenter ??
+    (biasDirection < 0
+      ? seededBetween(random, 0.18, 0.34)
+      : biasDirection > 0
+        ? seededBetween(random, 0.64, 0.82)
+        : seededBetween(random, 0.36, 0.64));
+  const startStrength =
+    biasDirection < 0
+      ? seededBetween(random, 1.02, 1.18)
+      : seededBetween(random, 0.82, 1.02);
+  const endStrength =
+    biasDirection > 0
+      ? seededBetween(random, 1.04, 1.22)
+      : seededBetween(random, 0.82, 1.02);
+  const edgeSlope = amplitude * seededBetween(random, 0.06, 0.18) * biasDirection;
+  const inwardBias = amplitude * seededBetween(random, 0.02, 0.08);
+  const majorWearMarks = createParchmentWearMarks(random, amplitude, {
+    countRange: [1, 3],
+    widthRange: [0.1, 0.2],
+    depthRange: [0.16, 0.38],
+    focusCenter: resolvedBiasCenter,
+    focusSpread: 0.12,
+    focusMix: 0.84,
+  });
+  const minorWearMarks = createParchmentWearMarks(random, amplitude, {
+    countRange: [2, 5],
+    widthRange: [0.035, 0.08],
+    depthRange: [0.04, 0.14],
+    centerPadding: 0.08,
+    focusCenter: resolvedBiasCenter,
+    focusSpread: 0.22,
+    focusMix: 0.38,
+  });
+
+  for (let index = 1; index < sampleCount; index += 1) {
+    const progress = index / sampleCount;
+    const edgePosition = lerp(start, end, progress);
+    const startFade = clamp(progress / startFadeSpan, 0, 1);
+    const endFade = clamp((1 - progress) / endFadeSpan, 0, 1);
+    const fade = Math.pow(startFade * endFade, 0.72);
+    const sideStrength = lerp(startStrength, endStrength, progress);
+    const taper = fade * sideStrength;
+    const primaryWave = Math.sin(progress * Math.PI * waveCount + primaryPhase);
+    const secondaryWave = Math.sin(progress * Math.PI * (waveCount * 1.72) + secondaryPhase);
+    const driftWave = Math.sin(progress * Math.PI * 0.92 + driftPhase);
+    const wearOffset =
+      sampleParchmentWear(progress, majorWearMarks) +
+      sampleParchmentWear(progress, minorWearMarks);
+    const rawOffset =
+      (primaryWave * 0.68 + secondaryWave * 0.18 + driftWave * 0.08) * amplitude * taper +
+      edgeSlope * (progress - 0.5) * 2 +
+      inwardBias * taper +
+      wearOffset * taper;
+    const offset = clamp(rawOffset, -amplitude * outwardRatio, amplitude * inwardRatio);
+
+    edgePoints.push(createParchmentEdgePoint(axis, edgePosition, basePosition, offset, inwardSign));
+  }
+
+  return reverse ? edgePoints.reverse() : edgePoints;
+}
+
 function createParchmentOutline(panelRect) {
   const { x, y, width, height } = panelRect;
-  const notch = clamp(Math.min(width, height) * 0.018, 6, 16);
-  const cornerX = clamp(width * 0.045, 16, 32);
-  const cornerY = clamp(height * 0.034, 14, 30);
+  const random = createSeededRandom(Math.round(width * 13 + height * 17));
+  const topInset = clamp(height * 0.014, 5, 12);
+  const rightInset = clamp(width * 0.014, 5, 11);
+  const bottomInset = clamp(height * 0.016, 6, 14);
+  const leftInset = clamp(width * 0.014, 5, 11);
+  const cornerRadiusX = clamp(width * 0.028, 8, 18);
+  const cornerRadiusY = clamp(height * 0.028, 8, 18);
+  const horizontalAmplitude = clamp(height * 0.02, 7, 15);
+  const verticalAmplitude = clamp(width * 0.015, 6, 12);
+
+  const topLeftTop = {
+    x: x + cornerRadiusX * seededBetween(random, 0.9, 1.06),
+    y: y + topInset + seededBetween(random, -1.2, 1.2),
+  };
+  const topRightTop = {
+    x: x + width - cornerRadiusX * seededBetween(random, 0.9, 1.08),
+    y: y + topInset + seededBetween(random, -1.2, 1.2),
+  };
+  const topRightSide = {
+    x: x + width - rightInset + seededBetween(random, -1.1, 1.1),
+    y: y + cornerRadiusY * seededBetween(random, 0.88, 1.04),
+  };
+  const bottomRightSide = {
+    x: x + width - rightInset + seededBetween(random, -1.1, 1.1),
+    y: y + height - cornerRadiusY * seededBetween(random, 0.9, 1.08),
+  };
+  const bottomRightBottom = {
+    x: x + width - cornerRadiusX * seededBetween(random, 0.9, 1.08),
+    y: y + height - bottomInset + seededBetween(random, -1.3, 1.3),
+  };
+  const bottomLeftBottom = {
+    x: x + cornerRadiusX * seededBetween(random, 0.92, 1.08),
+    y: y + height - bottomInset + seededBetween(random, -1.3, 1.3),
+  };
+  const bottomLeftSide = {
+    x: x + leftInset + seededBetween(random, -1.1, 1.1),
+    y: y + height - cornerRadiusY * seededBetween(random, 0.9, 1.08),
+  };
+  const topLeftSide = {
+    x: x + leftInset + seededBetween(random, -1.1, 1.1),
+    y: y + cornerRadiusY * seededBetween(random, 0.88, 1.04),
+  };
+
+  const topEdge = createSoftParchmentEdge(random, {
+    axis: 'horizontal',
+    start: topLeftTop.x,
+    end: topRightTop.x,
+    basePosition: y + topInset,
+    inwardSign: 1,
+    amplitude: horizontalAmplitude,
+    waveCount: 4.1,
+    sampleCount: 10,
+    outwardRatio: 0.34,
+    inwardRatio: 0.94,
+    biasDirection: -1,
+    biasCenter: 0.24,
+  });
+  const rightEdge = createSoftParchmentEdge(random, {
+    axis: 'vertical',
+    start: topRightSide.y,
+    end: bottomRightSide.y,
+    basePosition: x + width - rightInset,
+    inwardSign: -1,
+    amplitude: verticalAmplitude,
+    waveCount: 3.2,
+    sampleCount: 9,
+    outwardRatio: 0.28,
+    inwardRatio: 0.98,
+    biasDirection: 1,
+    biasCenter: 0.68,
+  });
+  const bottomEdge = createSoftParchmentEdge(random, {
+    axis: 'horizontal',
+    start: bottomLeftBottom.x,
+    end: bottomRightBottom.x,
+    basePosition: y + height - bottomInset,
+    inwardSign: -1,
+    amplitude: horizontalAmplitude * 1.06,
+    waveCount: 4.3,
+    sampleCount: 10,
+    outwardRatio: 0.36,
+    inwardRatio: 1,
+    biasDirection: 1,
+    biasCenter: 0.74,
+    reverse: true,
+  });
+  const leftEdge = createSoftParchmentEdge(random, {
+    axis: 'vertical',
+    start: topLeftSide.y,
+    end: bottomLeftSide.y,
+    basePosition: x + leftInset,
+    inwardSign: 1,
+    amplitude: verticalAmplitude,
+    waveCount: 3.15,
+    sampleCount: 9,
+    outwardRatio: 0.28,
+    inwardRatio: 0.98,
+    biasDirection: 1,
+    biasCenter: 0.58,
+    reverse: true,
+  });
 
   return [
-    { x: x + cornerX * 0.72, y: y + cornerY * 0.14 },
-    { x: x + width * 0.14, y: y + notch * 0.86 },
-    { x: x + width * 0.31, y: y + notch * 0.18 },
-    { x: x + width * 0.49, y: y + notch },
-    { x: x + width * 0.67, y: y + notch * 0.28 },
-    { x: x + width * 0.86, y: y + notch * 0.94 },
-    { x: x + width - cornerX * 0.74, y: y + cornerY * 0.22 },
-    { x: x + width - notch * 0.26, y: y + height * 0.14 },
-    { x: x + width - notch * 0.94, y: y + height * 0.34 },
-    { x: x + width - notch * 0.18, y: y + height * 0.56 },
-    { x: x + width - notch, y: y + height * 0.78 },
-    { x: x + width - cornerX * 0.92, y: y + height - cornerY * 0.64 },
-    { x: x + width * 0.82, y: y + height - notch * 0.34 },
-    { x: x + width * 0.64, y: y + height - notch },
-    { x: x + width * 0.42, y: y + height - notch * 0.16 },
-    { x: x + width * 0.2, y: y + height - notch * 0.84 },
-    { x: x + cornerX * 0.74, y: y + height - cornerY * 0.22 },
-    { x: x + notch * 0.28, y: y + height * 0.8 },
-    { x: x + notch * 0.98, y: y + height * 0.58 },
-    { x: x + notch * 0.14, y: y + height * 0.36 },
-    { x: x + cornerX * 0.56, y: y + cornerY * 0.84 },
+    topLeftTop,
+    topLeftTop,
+    ...topEdge,
+    topRightTop,
+    topRightTop,
+    topRightSide,
+    topRightSide,
+    ...rightEdge,
+    bottomRightSide,
+    bottomRightSide,
+    bottomRightBottom,
+    bottomRightBottom,
+    ...bottomEdge,
+    bottomLeftBottom,
+    bottomLeftBottom,
+    bottomLeftSide,
+    bottomLeftSide,
+    ...leftEdge,
+    topLeftSide,
+    topLeftSide,
   ];
 }
 
@@ -944,7 +1207,7 @@ function createFishMetrics(panelLayout) {
 
 function createSproutMetrics(panelLayout) {
   const minDim = Math.min(panelLayout.innerWidth, panelLayout.innerHeight);
-  const sproutScale = 1.1;
+  const sproutScale = 0.55;
   const stemHeight = clamp(minDim * 0.44, 150, 250) * sproutScale;
   const stemWidth = clamp(minDim * 0.024, 14, 22) * sproutScale;
   const bodyCurve = clamp(minDim * 0.005, 2.5, 6) * sproutScale;
@@ -998,15 +1261,17 @@ function createSproutMetrics(panelLayout) {
     legSpread,
     legWidth,
     footSize,
-    hopStride: clamp(minDim * 0.085, 28, 60) * sproutScale,
-    minHopStride: clamp(minDim * 0.038, 14, 26) * sproutScale,
-    hopHeight: clamp(minDim * 0.09, 24, 54) * sproutScale,
-    hopHeightVariance: clamp(minDim * 0.022, 6, 14) * sproutScale,
-    minHopDuration: 0.34,
-    maxHopDuration: 0.58,
-    landingBobAmplitude: clamp(minDim * 0.012, 3.5, 9) * sproutScale,
-    idleBobAmplitude: clamp(minDim * 0.003, 0.8, 2.4) * sproutScale,
-    targetThreshold: clamp(minDim * 0.08, 24, 52) * sproutScale,
+    hopStride: clamp(minDim * 0.22, 88, 172),
+    minHopStride: clamp(minDim * 0.1, 42, 84),
+    hopHeight: clamp(minDim * 0.24, 96, 220),
+    hopHeightVariance: clamp(minDim * 0.06, 22, 52),
+    minHopDuration: 0.48,
+    maxHopDuration: 0.76,
+    maxLateralDrift: clamp(minDim * 0.085, 34, 74),
+    retargetChance: 0.2,
+    landingBobAmplitude: clamp(minDim * 0.02, 8, 18),
+    idleBobAmplitude: clamp(minDim * 0.006, 1.8, 4.8),
+    targetThreshold: clamp(minDim * 0.16, 56, 120),
     bodyLength,
     maxHalfWidth,
     motionInsets: {
@@ -1229,6 +1494,267 @@ function getMotionBounds(layout, layoutCharacter = null) {
   };
 }
 
+class ParticlePool {
+  constructor(capacity) {
+    this.particles = [];
+
+    for (let index = 0; index < capacity; index += 1) {
+      this.particles.push({
+        alive: false,
+        x: 0,
+        y: 0,
+        vx: 0,
+        vy: 0,
+        alpha: 0,
+        maxAlpha: 1,
+        size: 2,
+        age: 0,
+        lifetime: 1,
+        hue: 45,
+        saturation: 80,
+        lightness: 75,
+        twinklePhase: 0,
+        twinkleSpeed: 5,
+        shape: 0,
+      });
+    }
+  }
+
+  acquire() {
+    for (const particle of this.particles) {
+      if (!particle.alive) {
+        particle.alive = true;
+        return particle;
+      }
+    }
+
+    return null;
+  }
+
+  release(particle) {
+    particle.alive = false;
+  }
+}
+
+class ParticleSystem {
+  constructor(capacity = 256) {
+    this.pool = new ParticlePool(capacity);
+  }
+
+  emitFishTail(x, y, headingX, headingY) {
+    const particle = this.pool.acquire();
+    if (!particle) {
+      return;
+    }
+
+    particle.vx = -headingX * randomBetween(15, 25) + randomBetween(-6, 6);
+    particle.vy = -headingY * randomBetween(15, 25) + randomBetween(-12, -2);
+    this._initCommon(
+      particle,
+      x,
+      y,
+      randomBetween(1.5, 3.5),
+      randomBetween(0.8, 1.6),
+      randomBetween(0.55, 0.95)
+    );
+  }
+
+  emitFishBody(x, y) {
+    const particle = this.pool.acquire();
+    if (!particle) {
+      return;
+    }
+
+    particle.vx = randomBetween(-8, 8);
+    particle.vy = randomBetween(-14, -3);
+    this._initCommon(
+      particle,
+      x,
+      y,
+      randomBetween(1.0, 2.2),
+      randomBetween(0.6, 1.2),
+      randomBetween(0.3, 0.6)
+    );
+  }
+
+  emitSproutLanding(x, y, count) {
+    for (let index = 0; index < count; index += 1) {
+      const particle = this.pool.acquire();
+      if (!particle) {
+        continue;
+      }
+
+      const angle = Math.PI + Math.random() * Math.PI;
+      const speed = randomBetween(30, 60);
+      particle.vx = Math.cos(angle) * speed;
+      particle.vy = Math.sin(angle) * speed;
+      this._initCommon(
+        particle,
+        x,
+        y,
+        randomBetween(2.0, 4.0),
+        randomBetween(0.4, 0.9),
+        randomBetween(0.7, 1.0)
+      );
+    }
+  }
+
+  emitSproutLaunch(x, y, count) {
+    for (let index = 0; index < count; index += 1) {
+      const particle = this.pool.acquire();
+      if (!particle) {
+        continue;
+      }
+
+      const angle = randomBetween(-0.4, 0.4);
+      const speed = randomBetween(15, 30);
+      particle.vx = Math.cos(angle) * speed;
+      particle.vy = Math.sin(angle) * speed * 0.5;
+      this._initCommon(
+        particle,
+        x,
+        y,
+        randomBetween(1.5, 3.0),
+        randomBetween(0.3, 0.7),
+        randomBetween(0.5, 0.85)
+      );
+    }
+  }
+
+  emitSproutTip(x, y) {
+    const particle = this.pool.acquire();
+    if (!particle) {
+      return;
+    }
+
+    particle.vx = randomBetween(-6, 6);
+    particle.vy = randomBetween(-16, -4);
+    this._initCommon(
+      particle,
+      x,
+      y,
+      randomBetween(1.0, 2.5),
+      randomBetween(0.5, 1.2),
+      randomBetween(0.4, 0.8)
+    );
+  }
+
+  _initCommon(particle, x, y, size, lifetime, maxAlpha) {
+    particle.x = x;
+    particle.y = y;
+    particle.size = size;
+    particle.lifetime = lifetime;
+    particle.maxAlpha = maxAlpha;
+    particle.age = 0;
+    particle.alpha = maxAlpha;
+    particle.twinklePhase = Math.random() * Math.PI * 2;
+    particle.twinkleSpeed = randomBetween(4, 8);
+
+    const shapeRoll = Math.random();
+    particle.shape = shapeRoll < 0.4 ? 0 : shapeRoll < 0.7 ? 1 : 2;
+
+    if (Math.random() < 0.15) {
+      particle.hue = randomBetween(35, 55);
+      particle.saturation = 10;
+      particle.lightness = 95;
+      return;
+    }
+
+    particle.hue = randomBetween(35, 55);
+    particle.saturation = randomBetween(60, 90);
+    particle.lightness = randomBetween(65, 92);
+  }
+
+  update(dt) {
+    for (const particle of this.pool.particles) {
+      if (!particle.alive) {
+        continue;
+      }
+
+      particle.age += dt;
+      if (particle.age >= particle.lifetime) {
+        this.pool.release(particle);
+        continue;
+      }
+
+      particle.x += particle.vx * dt;
+      particle.y += particle.vy * dt;
+      particle.vy *= 0.97;
+      particle.vx *= 0.98;
+
+      const lifeFraction = particle.age / particle.lifetime;
+      particle.alpha = particle.maxAlpha * (1 - Math.pow(lifeFraction, 1.8));
+      particle.alpha *= 0.75 + 0.25 * Math.sin(particle.twinklePhase + particle.age * particle.twinkleSpeed);
+    }
+  }
+
+  draw(context, panelLayout) {
+    if (!panelLayout) {
+      return;
+    }
+
+    context.save();
+    context.beginPath();
+    parchmentPath(context, panelLayout);
+    context.clip();
+    context.globalCompositeOperation = 'screen';
+
+    for (const particle of this.pool.particles) {
+      if (!particle.alive || particle.alpha < 0.01) {
+        continue;
+      }
+      if (
+        particle.x + particle.size * 2.5 < panelLayout.x ||
+        particle.x - particle.size * 2.5 > panelLayout.x + panelLayout.width ||
+        particle.y + particle.size * 2.5 < panelLayout.y ||
+        particle.y - particle.size * 2.5 > panelLayout.y + panelLayout.height
+      ) {
+        continue;
+      }
+
+      const color = `hsla(${particle.hue}, ${particle.saturation}%, ${particle.lightness}%, ${particle.alpha})`;
+      const glowColor = `hsla(${particle.hue}, ${particle.saturation}%, ${particle.lightness}%, ${particle.alpha * 0.15})`;
+
+      context.fillStyle = glowColor;
+      context.beginPath();
+      context.arc(particle.x, particle.y, particle.size * 2.5, 0, Math.PI * 2);
+      context.fill();
+
+      context.fillStyle = color;
+
+      if (particle.shape === 0) {
+        context.beginPath();
+        context.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+        context.fill();
+      } else if (particle.shape === 1) {
+        context.beginPath();
+        context.moveTo(particle.x, particle.y - particle.size);
+        context.lineTo(particle.x + particle.size * 0.5, particle.y);
+        context.lineTo(particle.x, particle.y + particle.size);
+        context.lineTo(particle.x - particle.size * 0.5, particle.y);
+        context.closePath();
+        context.fill();
+      } else {
+        const outer = particle.size;
+        const inner = particle.size * 0.3;
+        context.beginPath();
+        context.moveTo(particle.x, particle.y - outer);
+        context.lineTo(particle.x + inner, particle.y - inner);
+        context.lineTo(particle.x + outer, particle.y);
+        context.lineTo(particle.x + inner, particle.y + inner);
+        context.lineTo(particle.x, particle.y + outer);
+        context.lineTo(particle.x - inner, particle.y + inner);
+        context.lineTo(particle.x - outer, particle.y);
+        context.lineTo(particle.x - inner, particle.y - inner);
+        context.closePath();
+        context.fill();
+      }
+    }
+
+    context.restore();
+  }
+}
+
 class SegmentedFish {
   constructor(metrics, bounds) {
     this.metrics = metrics;
@@ -1246,6 +1772,8 @@ class SegmentedFish {
     this.driftPhase = Math.random() * Math.PI * 2;
     this.history = [];
     this.segments = [];
+    this.tailEmitAccum = 0;
+    this.bodyEmitAccum = 0;
     this.maxHistoryPoints = Math.ceil((this.metrics.bodyLength + this.metrics.segmentSpacing * 6) / this.metrics.historyStep) + 24;
     this.pickTarget();
     this.seedHistory();
@@ -1581,6 +2109,33 @@ class SegmentedFish {
     context.lineWidth = 1;
     context.stroke();
   }
+
+  emitParticles(particleSystemRef, dt) {
+    if (!particleSystemRef || !this.segments.length) {
+      return;
+    }
+
+    const tail = this.segments[this.segments.length - 1];
+    const tailTipX = tail.x - tail.tangent.x * (this.metrics.tailLength * 0.8);
+    const tailTipY = tail.y - tail.tangent.y * (this.metrics.tailLength * 0.8);
+
+    this.tailEmitAccum += 90 * dt;
+    while (this.tailEmitAccum >= 1) {
+      particleSystemRef.emitFishTail(tailTipX, tailTipY, tail.tangent.x, tail.tangent.y);
+      this.tailEmitAccum -= 1;
+    }
+
+    this.bodyEmitAccum += 20 * dt;
+    while (this.bodyEmitAccum >= 1) {
+      const segment = this.segments[Math.floor(Math.random() * this.segments.length)];
+      const offset = randomBetween(-0.5, 0.5) * segment.halfWidth;
+      particleSystemRef.emitFishBody(
+        segment.x + segment.normal.x * offset,
+        segment.y + segment.normal.y * offset
+      );
+      this.bodyEmitAccum -= 1;
+    }
+  }
 }
 
 class BeanSproutFairy {
@@ -1602,13 +2157,16 @@ class BeanSproutFairy {
     this.hopEndX = this.x;
     this.hopEndY = this.y;
     this.hopProgress = 0;
+    this.tipEmitAccum = 0;
+    this.justLanded = false;
+    this.justLaunched = false;
     this.pickTarget(true);
     this.startHop(true);
   }
 
   pickTarget(forceWide = false) {
-    const insetX = forceWide ? 0 : (this.bounds.maxX - this.bounds.minX) * 0.08;
-    const insetY = forceWide ? 0 : (this.bounds.maxY - this.bounds.minY) * 0.12;
+    const insetX = forceWide ? 0 : (this.bounds.maxX - this.bounds.minX) * 0.035;
+    const insetY = forceWide ? 0 : (this.bounds.maxY - this.bounds.minY) * 0.05;
     this.targetX = randomBetween(this.bounds.minX + insetX, this.bounds.maxX - insetX);
     this.targetY = randomBetween(this.bounds.minY + insetY, this.bounds.maxY - insetY);
   }
@@ -1624,14 +2182,26 @@ class BeanSproutFairy {
     };
   }
 
+  toWorldPoint(localX, localY) {
+    const cos = Math.cos(this.rotation);
+    const sin = Math.sin(this.rotation);
+    const rotatedX = localX * this.facing;
+    const rotatedY = localY;
+
+    return {
+      x: this.x + rotatedX * cos - rotatedY * sin,
+      y: this.displayY + rotatedX * sin + rotatedY * cos,
+    };
+  }
+
   startHop(forceInitial = false) {
     const m = this.metrics;
     const dx = this.targetX - this.x;
     const dy = this.targetY - this.y;
     const distanceToTarget = Math.hypot(dx, dy);
 
-    if (!forceInitial && distanceToTarget < m.targetThreshold) {
-      this.pickTarget();
+    if (!forceInitial && (distanceToTarget < m.targetThreshold || Math.random() < m.retargetChance)) {
+      this.pickTarget(Math.random() < 0.42);
     }
 
     const nextDx = this.targetX - this.x;
@@ -1639,22 +2209,27 @@ class BeanSproutFairy {
     const nextDistance = Math.hypot(nextDx, nextDy) || 1;
     const dirX = nextDx / nextDistance;
     const dirY = nextDy / nextDistance;
+    const normalX = -dirY;
+    const normalY = dirX;
     const stride = clamp(
-      nextDistance * randomBetween(0.28, 0.42),
+      nextDistance * randomBetween(0.58, 0.9),
       m.minHopStride,
       m.hopStride
     );
+    const lateralDrift =
+      randomBetween(-m.maxLateralDrift, m.maxLateralDrift) *
+      clamp(nextDistance / Math.max(1, m.hopStride), 0.45, 1);
 
     this.hopStartX = this.x;
     this.hopStartY = this.y;
-    this.hopEndX = clamp(this.x + dirX * stride, this.bounds.minX, this.bounds.maxX);
-    this.hopEndY = clamp(this.y + dirY * stride * 0.75, this.bounds.minY, this.bounds.maxY);
+    this.hopEndX = clamp(this.x + dirX * stride + normalX * lateralDrift, this.bounds.minX, this.bounds.maxX);
+    this.hopEndY = clamp(this.y + dirY * stride * 1.08 + normalY * lateralDrift * 0.72, this.bounds.minY, this.bounds.maxY);
     this.hopElapsed = 0;
     this.hopDuration = randomBetween(m.minHopDuration, m.maxHopDuration);
     this.hopHeight = clamp(
-      m.hopHeight + randomBetween(-m.hopHeightVariance, m.hopHeightVariance) + stride * 0.16,
-      m.hopHeight * 0.72,
-      m.hopHeight * 1.45
+      m.hopHeight + randomBetween(-m.hopHeightVariance, m.hopHeightVariance) + stride * 0.4,
+      m.hopHeight * 0.85,
+      m.hopHeight * 1.7
     );
     this.hopProgress = 0;
 
@@ -1666,6 +2241,7 @@ class BeanSproutFairy {
   update(dt, timestamp) {
     const m = this.metrics;
     this.hopElapsed += dt;
+    const previousProgress = this.hopProgress;
     const progress = clamp(this.hopElapsed / this.hopDuration, 0, 1);
     this.hopProgress = progress;
     const travel = 1 - Math.pow(1 - progress, 2);
@@ -1674,27 +2250,62 @@ class BeanSproutFairy {
     this.y = lerp(this.hopStartY, this.hopEndY, travel);
 
     const hopLift = Math.sin(progress * Math.PI) * this.hopHeight;
-    const touchdownPulse = Math.max(0, 1 - Math.abs(progress - 0.96) / 0.1);
-    const launchPulse = Math.max(0, 1 - Math.abs(progress - 0.08) / 0.1);
-    this.walkPhase += dt * lerp(7.5, 11.5, hopLift / Math.max(1, this.hopHeight));
+    const touchdownPulse = Math.max(0, 1 - Math.abs(progress - 0.95) / 0.08);
+    const launchPulse = Math.max(0, 1 - Math.abs(progress - 0.06) / 0.08);
+    this.walkPhase += dt * lerp(6.8, 10.6, hopLift / Math.max(1, this.hopHeight));
 
     const bobTarget =
       -hopLift +
-      Math.sin(timestamp * 0.0016 + this.walkPhase * 0.18) * m.idleBobAmplitude +
-      Math.sin(progress * Math.PI * 2) * m.landingBobAmplitude * 0.12 -
-      touchdownPulse * m.landingBobAmplitude * 0.2 +
-      launchPulse * m.landingBobAmplitude * 0.08;
-    this.bobOffset += (bobTarget - this.bobOffset) * (1 - Math.exp(-dt * 11));
+      Math.sin(timestamp * 0.0024 + this.walkPhase * 0.22) * m.idleBobAmplitude +
+      Math.sin(progress * Math.PI * 2.4) * m.landingBobAmplitude * 0.18 -
+      touchdownPulse * m.landingBobAmplitude * 0.26 +
+      launchPulse * m.landingBobAmplitude * 0.14;
+    this.bobOffset += (bobTarget - this.bobOffset) * (1 - Math.exp(-dt * 14));
     this.displayY = clamp(this.y + this.bobOffset, this.bounds.minY, this.bounds.maxY + m.footSize);
 
-    const arcTilt = Math.sin(progress * Math.PI) * 0.045 * this.facing;
-    const targetRotation = clamp((this.hopEndX - this.hopStartX) / Math.max(1, m.hopStride) * 0.06, -0.06, 0.06) + arcTilt;
-    this.rotation += (targetRotation - this.rotation) * (1 - Math.exp(-dt * 5.5));
+    const horizontalTravel = this.hopEndX - this.hopStartX;
+    const verticalTravel = this.hopEndY - this.hopStartY;
+    const arcTilt = Math.sin(progress * Math.PI) * 0.075 * this.facing;
+    const targetRotation =
+      clamp(horizontalTravel / Math.max(1, m.hopStride) * 0.11, -0.11, 0.11) +
+      clamp(verticalTravel / Math.max(1, m.hopStride) * 0.04, -0.04, 0.04) +
+      arcTilt;
+    this.rotation += (targetRotation - this.rotation) * (1 - Math.exp(-dt * 8));
+
+    if (previousProgress < 0.92 && progress >= 0.92) {
+      this.justLanded = true;
+    }
 
     if (progress >= 1) {
+      this.justLaunched = true;
       this.x = this.hopEndX;
       this.y = this.hopEndY;
       this.startHop();
+    }
+  }
+
+  emitParticles(particleSystemRef, dt) {
+    if (!particleSystemRef) {
+      return;
+    }
+
+    const footY = this.displayY + this.metrics.legLength * 0.92;
+
+    if (this.justLanded) {
+      particleSystemRef.emitSproutLanding(this.x, footY, randomBetween(8, 12) | 0);
+      this.justLanded = false;
+    }
+
+    if (this.justLaunched) {
+      particleSystemRef.emitSproutLaunch(this.x, footY, randomBetween(4, 6) | 0);
+      this.justLaunched = false;
+    }
+
+    const tipWorld = this.toWorldPoint(this.metrics.hookTipX, this.metrics.hookTipY);
+    this.tipEmitAccum += 45 * dt;
+    while (this.tipEmitAccum >= 1) {
+      particleSystemRef.emitSproutTip(tipWorld.x, tipWorld.y);
+      this.tipEmitAccum -= 1;
     }
   }
 
@@ -1749,6 +2360,7 @@ function rebuildScene() {
   backdropTexture = createBackdropTexture(W, H);
   paperTexture = createPaperTexture(panel.width, panel.height);
   character = createCharacter(selectedCharacter, panel, motionBounds);
+  particleSystem = new ParticleSystem(256);
   syncBackButtonPosition();
   flowTargets = [];
   lastTextFlowUpdate = 0;
@@ -1763,6 +2375,9 @@ function renderIntroFrame() {
 
   drawBackground();
   drawPanel();
+  if (particleSystem) {
+    particleSystem.draw(ctx, panel);
+  }
   drawText();
   character.draw(ctx);
 }
@@ -1815,6 +2430,13 @@ function drawPanel() {
   wash.addColorStop(1, 'rgba(100, 80, 90, 0.06)');
   ctx.fillStyle = wash;
   ctx.fillRect(panel.x, panel.y, panel.width, panel.height);
+
+  parchmentPath(ctx, panel);
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.strokeStyle = 'rgba(124, 88, 54, 0.075)';
+  ctx.lineWidth = clamp(Math.min(panel.width, panel.height) * 0.024, 5, 11);
+  ctx.lineJoin = 'round';
+  ctx.stroke();
   ctx.restore();
 
   ctx.save();
@@ -2242,9 +2864,16 @@ function loop(timestamp) {
   lastTime = timestamp;
   updateFps(dt);
   character.update(dt, timestamp);
+  if (particleSystem) {
+    character.emitParticles(particleSystem, dt);
+    particleSystem.update(dt);
+  }
   updateTextFlow(timestamp);
   drawBackground();
   drawPanel();
+  if (particleSystem) {
+    particleSystem.draw(ctx, panel);
+  }
   drawText();
   character.draw(ctx);
 }
@@ -2252,6 +2881,7 @@ function loop(timestamp) {
 function syncModalState() {
   const isOpen = !textModalEl.hidden || !configModalEl.hidden;
   document.body.classList.toggle('is-modal-open', isOpen);
+  document.body.classList.toggle('is-config-open', !configModalEl.hidden);
 }
 
 function syncBackButtonPosition() {
@@ -2300,10 +2930,11 @@ function setInputModalOpen(isOpen, options = {}) {
 }
 
 function setConfigModalOpen(isOpen, options = {}) {
-  const { restoreFocus = true } = options;
+  const { restoreFocus = true, commit = false } = options;
 
   if (isOpen) {
     setInputModalOpen(false, { restoreFocus: false });
+    configSessionStartSettings = { ...settings };
     populateConfigForm(settings);
   }
 
@@ -2313,7 +2944,14 @@ function setConfigModalOpen(isOpen, options = {}) {
 
   if (isOpen) {
     fontSizeInputEl.focus();
-  } else if (restoreFocus) {
+  } else {
+    if (!commit && configSessionStartSettings) {
+      void applySceneSettings(configSessionStartSettings);
+    }
+    configSessionStartSettings = null;
+  }
+
+  if (!isOpen && restoreFocus) {
     toggleConfigButton.focus();
   }
 }
@@ -2337,6 +2975,32 @@ async function ensureFontLoaded(fontKey = settings.fontFamily) {
   ]);
 }
 
+async function applySceneSettings(nextSettings, options = {}) {
+  const { save = false } = options;
+  const safeSettings = sanitizeSettings(nextSettings);
+  settings = safeSettings;
+
+  if (save) {
+    saveSettings(settings);
+  }
+
+  syncCssSettings();
+  const previewToken = ++configPreviewToken;
+  await ensureFontLoaded(settings.fontFamily);
+  if (previewToken !== configPreviewToken) {
+    return;
+  }
+  refreshScene();
+}
+
+function previewConfigSettings() {
+  if (configModalEl.hidden) {
+    return;
+  }
+
+  void applySceneSettings(readConfigForm());
+}
+
 function refreshScene() {
   rebuildScene();
   if (!sceneReady) {
@@ -2347,13 +3011,9 @@ function refreshScene() {
 }
 
 async function applyConfigSettings() {
-  const nextSettings = readConfigForm();
-  settings = nextSettings;
-  saveSettings(settings);
-  syncCssSettings();
-  await ensureFontLoaded(settings.fontFamily);
-  refreshScene();
-  setConfigModalOpen(false);
+  await applySceneSettings(readConfigForm(), { save: true });
+  configSessionStartSettings = null;
+  setConfigModalOpen(false, { commit: true });
 }
 
 function startExperience() {
@@ -2429,6 +3089,7 @@ cancelConfigButton.addEventListener('click', () => {
 });
 resetConfigButton.addEventListener('click', () => {
   populateConfigForm(DEFAULT_SETTINGS);
+  previewConfigSettings();
 });
 applyConfigButton.addEventListener('click', async () => {
   await applyConfigSettings();
@@ -2465,11 +3126,30 @@ configModalEl.addEventListener('keydown', (event) => {
 configFormEl.addEventListener('submit', (event) => {
   event.preventDefault();
 });
-fontSizeInputEl.addEventListener('input', updateConfigValueLabels);
-outlineGapInputEl.addEventListener('input', updateConfigValueLabels);
-textColorInputEl.addEventListener('input', updateConfigValueLabels);
-textIntervalInputEl.addEventListener('input', updateConfigValueLabels);
-paperColorInputEl.addEventListener('input', updateConfigValueLabels);
+fontSizeInputEl.addEventListener('input', () => {
+  updateConfigValueLabels();
+  previewConfigSettings();
+});
+outlineGapInputEl.addEventListener('input', () => {
+  updateConfigValueLabels();
+  previewConfigSettings();
+});
+textColorInputEl.addEventListener('input', () => {
+  updateConfigValueLabels();
+  previewConfigSettings();
+});
+fontFamilyInputEl.addEventListener('change', () => {
+  updateConfigValueLabels();
+  previewConfigSettings();
+});
+textIntervalInputEl.addEventListener('input', () => {
+  updateConfigValueLabels();
+  previewConfigSettings();
+});
+paperColorInputEl.addEventListener('input', () => {
+  updateConfigValueLabels();
+  previewConfigSettings();
+});
 document.querySelectorAll('input[name="character"]').forEach((radio) => {
   radio.addEventListener('change', (event) => {
     if (experienceStarted || !event.target.checked) {
