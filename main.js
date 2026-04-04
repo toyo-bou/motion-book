@@ -28,6 +28,9 @@ const textIntervalInputEl = document.getElementById('text-interval-input');
 const textIntervalValueEl = document.getElementById('text-interval-value');
 const paperColorInputEl = document.getElementById('paper-color-input');
 const paperColorValueEl = document.getElementById('paper-color-value');
+const audioFileInputEl = document.getElementById('audio-file-input');
+const audioFileNameEl = document.getElementById('audio-file-name');
+const audioClearButtonEl = document.getElementById('audio-clear-button');
 
 const FONT_SIZE_BASELINE_PX = 14;
 const LEGACY_DEFAULT_FONT_SIZE_PX = 18;
@@ -140,6 +143,8 @@ let animationFrameId = 0;
 let configSessionStartSettings = null;
 let configPreviewToken = 0;
 let particleSystem = null;
+let bgmAudio = null;
+let bgmObjectUrl = null;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -3001,6 +3006,24 @@ function previewConfigSettings() {
   void applySceneSettings(readConfigForm());
 }
 
+function syncBgmSelectionUi(fileName = '未選択') {
+  audioFileNameEl.textContent = fileName;
+  audioClearButtonEl.hidden = fileName === '未選択';
+}
+
+function cleanupBgm() {
+  if (bgmAudio) {
+    bgmAudio.pause();
+    bgmAudio.src = '';
+    bgmAudio = null;
+  }
+
+  if (bgmObjectUrl) {
+    URL.revokeObjectURL(bgmObjectUrl);
+    bgmObjectUrl = null;
+  }
+}
+
 function refreshScene() {
   rebuildScene();
   if (!sceneReady) {
@@ -3028,6 +3051,10 @@ function startExperience() {
   selectedCharacter = checkedRadio ? checkedRadio.value : 'fish';
   bookTextSource = normalizeSourceText(textInputEl.value);
   rebuildScene();
+  if (bgmAudio) {
+    bgmAudio.currentTime = 0;
+    void bgmAudio.play().catch(() => {});
+  }
   sceneReady = true;
   startScreenEl.classList.add('is-hidden');
   document.body.classList.add('is-running');
@@ -3039,6 +3066,10 @@ function startExperience() {
 
 function returnToStartScreen() {
   stopAnimationLoop();
+  if (bgmAudio) {
+    bgmAudio.pause();
+    bgmAudio.currentTime = 0;
+  }
   experienceStarted = false;
   sceneReady = false;
   frameCount = 0;
@@ -3069,6 +3100,24 @@ function scheduleRebuild() {
 
 window.addEventListener('resize', scheduleRebuild);
 backButtonEl.addEventListener('click', returnToStartScreen);
+audioFileInputEl.addEventListener('change', () => {
+  const file = audioFileInputEl.files && audioFileInputEl.files[0];
+  if (!file) {
+    return;
+  }
+
+  cleanupBgm();
+  bgmObjectUrl = URL.createObjectURL(file);
+  bgmAudio = new Audio(bgmObjectUrl);
+  bgmAudio.loop = true;
+  bgmAudio.volume = 0.5;
+  syncBgmSelectionUi(file.name);
+});
+audioClearButtonEl.addEventListener('click', () => {
+  cleanupBgm();
+  audioFileInputEl.value = '';
+  syncBgmSelectionUi();
+});
 toggleInputButton.addEventListener('click', () => {
   setInputModalOpen(true);
 });

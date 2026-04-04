@@ -50,6 +50,22 @@
           </label>
         </div>
       </div>
+      <div class="audio-select" id="audio-select">
+        <p class="audio-select-label">BGMを選ぶ（任意）</p>
+        <div class="audio-select-row">
+          <label class="audio-file-label start-button secondary" for="audio-file-input">
+            ファイルを選択
+            <input
+              id="audio-file-input"
+              type="file"
+              accept="audio/*"
+              hidden
+            />
+          </label>
+          <span id="audio-file-name" class="audio-file-name">未選択</span>
+          <button id="audio-clear-button" class="audio-clear-button icon-button" type="button" aria-label="BGMを解除" hidden>✕</button>
+        </div>
+      </div>
       <div class="start-actions">
         <button
           id="toggle-input-button"
