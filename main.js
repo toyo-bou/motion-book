@@ -98,6 +98,13 @@ const SPROUT_CAP = 'rgba(220, 180, 140, 0.96)';
 const SPROUT_STROKE = 'rgba(36, 28, 38, 0.96)';
 const SPROUT_EYE = 'rgba(36, 28, 38, 0.96)';
 const SPROUT_BLUSH = 'rgba(196, 122, 138, 0.58)';
+const DEVIL_SKIN = 'rgba(248, 246, 244, 0.97)';
+const DEVIL_MASK = 'rgba(8, 4, 12, 0.96)';
+const DEVIL_CLOTH = 'rgba(10, 8, 14, 0.94)';
+const DEVIL_CLOTH_STROKE = 'rgba(4, 2, 6, 0.98)';
+const DEVIL_STROKE = 'rgba(12, 8, 16, 0.97)';
+const DEVIL_SHADOW = 'rgba(60, 50, 70, 0.4)';
+const DEVIL_BROW = 'rgba(8, 4, 12, 0.98)';
 
 const DEFAULT_BOOK_TEXT_SOURCE = [
   '汚れつちまつた悲しみに',
@@ -462,6 +469,313 @@ function drawSproutFairyFigure(context, metrics, pose = {}) {
   context.ellipse(faceX + m.stemWidth * 0.16, faceY + m.stemWidth * 0.56, faceSize * 0.94, faceSize * 0.6, 0, 0, Math.PI * 2);
   context.fill();
 
+  context.restore();
+}
+
+function getDevilFigureLayout(metrics, breathPhase = 0) {
+  const breath = Math.sin(breathPhase) * 0.03;
+  const torsoHeight = metrics.torsoHeight * (1 + breath * 0.65);
+  const torsoHalfTop = metrics.torsoWidth * (1 + breath * 0.28);
+  const torsoHalfBottom = torsoHalfTop * 1.14;
+  const torsoTopY = -torsoHeight * 0.56;
+  const torsoBottomY = torsoHeight * 0.62;
+  const shoulderY = torsoTopY + torsoHeight * 0.12;
+  const neckTopY = torsoTopY - metrics.neckHeight;
+  const headCenterY = neckTopY - metrics.headRy * 0.84;
+
+  return {
+    torsoHeight,
+    torsoHalfTop,
+    torsoHalfBottom,
+    torsoTopY,
+    torsoBottomY,
+    shoulderY,
+    neckTopY,
+    headCenterY,
+    leftShoulder: {
+      x: -metrics.shoulderWidth,
+      y: shoulderY,
+    },
+    rightShoulder: {
+      x: metrics.shoulderWidth,
+      y: shoulderY,
+    },
+    leftHand: {
+      x: -metrics.shoulderWidth * 0.45,
+      y: torsoTopY + torsoHeight * 0.28,
+    },
+    rightHand: {
+      x: metrics.shoulderWidth * 0.45,
+      y: torsoTopY + torsoHeight * 0.32,
+    },
+  };
+}
+
+function drawDevilHand(context, x, y, handSize, fingerLength, direction = 1) {
+  const palmWidth = handSize * 0.9;
+  const palmHeight = handSize * 1.08;
+
+  context.save();
+  context.translate(x, y);
+  context.rotate(direction * -0.16);
+  context.fillStyle = DEVIL_SKIN;
+  context.strokeStyle = DEVIL_STROKE;
+  context.lineWidth = Math.max(1, palmWidth * 0.14);
+  context.lineJoin = 'round';
+  context.lineCap = 'round';
+
+  context.beginPath();
+  context.moveTo(-palmWidth * 0.42, palmHeight * 0.34);
+  context.quadraticCurveTo(-palmWidth * 0.72, -palmHeight * 0.04, -palmWidth * 0.2, -palmHeight * 0.62);
+  context.quadraticCurveTo(palmWidth * 0.22, -palmHeight * 0.76, palmWidth * 0.52, -palmHeight * 0.16);
+  context.quadraticCurveTo(palmWidth * 0.7, palmHeight * 0.22, palmWidth * 0.18, palmHeight * 0.56);
+  context.closePath();
+  context.fill();
+  context.stroke();
+
+  const fingerLineWidth = Math.max(0.8, palmWidth * 0.11);
+  const fingerBases = [-0.34, -0.12, 0.1, 0.32];
+  context.lineWidth = fingerLineWidth;
+  for (let index = 0; index < fingerBases.length; index += 1) {
+    const baseX = fingerBases[index] * palmWidth;
+    const lift = palmHeight * (0.62 + index * 0.08);
+    const tipX = baseX + direction * fingerLength * (0.68 + index * 0.04);
+    const tipY = -lift;
+    context.beginPath();
+    context.moveTo(baseX, -palmHeight * 0.28);
+    context.quadraticCurveTo(
+      baseX + direction * fingerLength * 0.24,
+      -palmHeight * 0.84 - index * 0.4,
+      tipX,
+      tipY
+    );
+    context.stroke();
+  }
+
+  context.beginPath();
+  context.moveTo(direction * palmWidth * 0.04, palmHeight * 0.06);
+  context.quadraticCurveTo(
+    direction * fingerLength * 0.18,
+    palmHeight * 0.34,
+    direction * fingerLength * 0.44,
+    palmHeight * 0.16
+  );
+  context.stroke();
+  context.restore();
+}
+
+function drawDevilTorso(context, m, layout) {
+  context.beginPath();
+  context.moveTo(-layout.torsoHalfTop, layout.torsoTopY);
+  context.lineTo(layout.torsoHalfTop, layout.torsoTopY);
+  context.lineTo(layout.torsoHalfBottom, layout.torsoBottomY);
+  context.lineTo(-layout.torsoHalfBottom, layout.torsoBottomY);
+  context.closePath();
+  context.fillStyle = DEVIL_CLOTH;
+  context.fill();
+  context.strokeStyle = DEVIL_CLOTH_STROKE;
+  context.lineWidth = Math.max(2, m.armWidth * 0.22);
+  context.lineJoin = 'round';
+  context.stroke();
+}
+
+function drawDevilNeckAndVest(context, m, layout) {
+  const vNeckY = layout.torsoTopY + layout.torsoHeight * 0.27;
+  context.beginPath();
+  context.moveTo(-m.neckWidth * 1.2, layout.torsoTopY + 1);
+  context.lineTo(0, vNeckY);
+  context.lineTo(m.neckWidth * 1.2, layout.torsoTopY + 1);
+  context.closePath();
+  context.fillStyle = DEVIL_SKIN;
+  context.fill();
+
+  context.beginPath();
+  context.moveTo(-m.neckWidth * 0.44, layout.torsoTopY);
+  context.lineTo(m.neckWidth * 0.44, layout.torsoTopY);
+  context.lineTo(m.neckWidth * 0.28, layout.neckTopY);
+  context.lineTo(-m.neckWidth * 0.28, layout.neckTopY);
+  context.closePath();
+  context.fillStyle = DEVIL_SKIN;
+  context.fill();
+  context.strokeStyle = DEVIL_STROKE;
+  context.lineWidth = 1.1;
+  context.stroke();
+}
+
+function drawDevilArms(context, m, layout) {
+  const armOuterWidth = m.armWidth + Math.max(3.5, m.armWidth * 0.34);
+
+  strokeOutlinedPath(context, armOuterWidth, m.armWidth, DEVIL_CLOTH_STROKE, DEVIL_CLOTH, (ctxRef) => {
+    ctxRef.moveTo(layout.leftShoulder.x, layout.leftShoulder.y);
+    ctxRef.quadraticCurveTo(
+      -m.armWidth * 0.1,
+      layout.torsoTopY + layout.torsoHeight * 0.22,
+      layout.rightHand.x,
+      layout.rightHand.y
+    );
+  });
+
+  strokeOutlinedPath(context, armOuterWidth, m.armWidth, DEVIL_CLOTH_STROKE, DEVIL_CLOTH, (ctxRef) => {
+    ctxRef.moveTo(layout.rightShoulder.x, layout.rightShoulder.y);
+    ctxRef.quadraticCurveTo(
+      m.armWidth * 0.1,
+      layout.torsoTopY + layout.torsoHeight * 0.18,
+      layout.leftHand.x,
+      layout.leftHand.y
+    );
+  });
+
+  drawDevilHand(context, layout.leftHand.x, layout.leftHand.y, m.handSize, m.fingerLength, -1);
+  drawDevilHand(context, layout.rightHand.x, layout.rightHand.y, m.handSize, m.fingerLength, 1);
+}
+
+function drawDevilHead(context, m, layout) {
+  context.beginPath();
+  context.ellipse(0, layout.headCenterY, m.headRx, m.headRy, 0, 0, Math.PI * 2);
+  context.fillStyle = DEVIL_SKIN;
+  context.fill();
+  context.strokeStyle = DEVIL_STROKE;
+  context.lineWidth = Math.max(1.8, m.browThickness * 0.45);
+  context.stroke();
+
+  context.save();
+  context.beginPath();
+  context.ellipse(0, layout.headCenterY, m.headRx * 0.98, m.headRy * 0.98, 0, 0, Math.PI * 2);
+  context.clip();
+
+  const cheekShadow = context.createLinearGradient(
+    -m.headRx * 0.2,
+    layout.headCenterY - m.headRy * 0.1,
+    m.headRx * 1.1,
+    layout.headCenterY + m.headRy * 0.46
+  );
+  cheekShadow.addColorStop(0, 'rgba(60, 50, 70, 0)');
+  cheekShadow.addColorStop(0.44, 'rgba(60, 50, 70, 0.03)');
+  cheekShadow.addColorStop(1, DEVIL_SHADOW);
+  context.fillStyle = cheekShadow;
+  context.beginPath();
+  context.moveTo(m.headRx * 0.06, layout.headCenterY - m.headRy * 1.05);
+  context.quadraticCurveTo(m.headRx * 0.84, layout.headCenterY - m.headRy * 0.8, m.headRx * 0.9, layout.headCenterY - m.headRy * 0.12);
+  context.quadraticCurveTo(m.headRx * 0.94, layout.headCenterY + m.headRy * 0.74, m.headRx * 0.18, layout.headCenterY + m.headRy * 1.02);
+  context.quadraticCurveTo(m.headRx * 0.04, layout.headCenterY + m.headRy * 0.5, m.headRx * 0.16, layout.headCenterY - m.headRy * 0.16);
+  context.closePath();
+  context.fill();
+
+  const jawShadow = context.createLinearGradient(
+    -m.headRx * 0.18,
+    layout.headCenterY + m.headRy * 0.18,
+    m.headRx * 0.68,
+    layout.headCenterY + m.headRy * 0.92
+  );
+  jawShadow.addColorStop(0, 'rgba(60, 50, 70, 0)');
+  jawShadow.addColorStop(1, 'rgba(60, 50, 70, 0.08)');
+  context.fillStyle = jawShadow;
+  context.beginPath();
+  context.moveTo(-m.headRx * 0.12, layout.headCenterY + m.headRy * 0.42);
+  context.quadraticCurveTo(m.headRx * 0.12, layout.headCenterY + m.headRy * 0.9, m.headRx * 0.42, layout.headCenterY + m.headRy * 0.84);
+  context.quadraticCurveTo(m.headRx * 0.22, layout.headCenterY + m.headRy * 0.56, -m.headRx * 0.04, layout.headCenterY + m.headRy * 0.5);
+  context.closePath();
+  context.fill();
+  context.restore();
+
+  const hairTopY = layout.headCenterY - m.headRy - m.hairHeight * 0.54;
+  context.beginPath();
+  context.moveTo(-m.headRx * 0.94, layout.headCenterY - m.headRy * 0.24);
+  context.quadraticCurveTo(-m.headRx * 1.12, layout.headCenterY - m.headRy * 0.98, -m.headRx * 0.48, hairTopY);
+  context.quadraticCurveTo(-m.headRx * 0.06, hairTopY - m.hairHeight * 0.1, m.headRx * 0.24, layout.headCenterY - m.headRy - m.hairHeight * 0.34);
+  context.quadraticCurveTo(m.headRx * 0.78, layout.headCenterY - m.headRy * 0.96, m.headRx * 0.92, layout.headCenterY - m.headRy * 0.08);
+  context.lineTo(m.headRx * 0.64, layout.headCenterY - m.headRy * 0.02);
+  context.quadraticCurveTo(m.headRx * 0.46, layout.headCenterY - m.headRy * 0.5, m.headRx * 0.08, layout.headCenterY - m.headRy * 0.56);
+  context.quadraticCurveTo(-m.headRx * 0.22, layout.headCenterY - m.headRy * 0.64, -m.headRx * 0.52, layout.headCenterY - m.headRy * 0.36);
+  context.lineTo(-m.headRx * 0.82, layout.headCenterY - m.headRy * 0.04);
+  context.closePath();
+  context.fillStyle = DEVIL_CLOTH_STROKE;
+  context.fill();
+
+  context.strokeStyle = 'rgba(240, 240, 242, 0.26)';
+  context.lineWidth = Math.max(1, m.browThickness * 0.22);
+  context.beginPath();
+  context.moveTo(-m.headRx * 0.2, hairTopY + m.hairHeight * 0.24);
+  context.quadraticCurveTo(-m.headRx * 0.02, hairTopY - m.hairHeight * 0.08, m.headRx * 0.16, hairTopY + m.hairHeight * 0.12);
+  context.stroke();
+  context.beginPath();
+  context.moveTo(m.headRx * 0.28, layout.headCenterY - m.headRy * 0.86);
+  context.quadraticCurveTo(m.headRx * 0.5, layout.headCenterY - m.headRy * 1.02, m.headRx * 0.62, layout.headCenterY - m.headRy * 0.62);
+  context.stroke();
+}
+
+function drawDevilFace(context, m, layout) {
+  const leftEyeX = -m.eyeOffsetX;
+  const leftEyeY = layout.headCenterY + m.eyeOffsetY;
+  const rightEyeX = m.eyeOffsetX * 0.96;
+  const rightEyeY = layout.headCenterY + m.eyeOffsetY * 0.94;
+
+  context.beginPath();
+  context.ellipse(leftEyeX, leftEyeY, m.eyeMaskRx, m.eyeMaskRy, -0.18, 0, Math.PI * 2);
+  context.fillStyle = DEVIL_MASK;
+  context.fill();
+
+  context.beginPath();
+  context.moveTo(rightEyeX - m.eyeMaskRx2 * 0.96, rightEyeY - m.eyeMaskRy2 * 0.24);
+  context.quadraticCurveTo(rightEyeX - m.eyeMaskRx2 * 0.46, rightEyeY - m.eyeMaskRy2 * 1.02, rightEyeX + m.eyeMaskRx2 * 0.58, rightEyeY - m.eyeMaskRy2 * 0.66);
+  context.quadraticCurveTo(rightEyeX + m.eyeMaskRx2 * 1.08, rightEyeY - m.eyeMaskRy2 * 0.08, rightEyeX + m.eyeMaskRx2 * 0.8, rightEyeY + m.eyeMaskRy2 * 0.72);
+  context.quadraticCurveTo(rightEyeX + m.eyeMaskRx2 * 0.08, rightEyeY + m.eyeMaskRy2 * 0.98, rightEyeX - m.eyeMaskRx2 * 0.3, rightEyeY + m.eyeMaskRy2 * 0.34);
+  context.quadraticCurveTo(rightEyeX - m.eyeMaskRx2 * 0.74, rightEyeY + m.eyeMaskRy2 * 0.08, rightEyeX - m.eyeMaskRx2 * 0.96, rightEyeY - m.eyeMaskRy2 * 0.24);
+  context.closePath();
+  context.fill();
+
+  context.fillStyle = 'rgba(236, 234, 232, 0.9)';
+  context.beginPath();
+  context.ellipse(leftEyeX, leftEyeY + m.eyeMaskRy * 0.04, m.eyeMaskRx * 0.48, m.eyeMaskRy * 0.24, -0.12, 0, Math.PI * 2);
+  context.fill();
+  context.beginPath();
+  context.ellipse(rightEyeX, rightEyeY + m.eyeMaskRy2 * 0.04, m.eyeMaskRx2 * 0.4, m.eyeMaskRy2 * 0.22, -0.08, 0, Math.PI * 2);
+  context.fill();
+
+  context.fillStyle = DEVIL_BROW;
+  context.beginPath();
+  context.arc(leftEyeX + m.eyeMaskRx * 0.06, leftEyeY - m.eyeMaskRy * 0.1, m.eyeSize, 0, Math.PI * 2);
+  context.fill();
+  context.beginPath();
+  context.arc(rightEyeX, rightEyeY - m.eyeMaskRy2 * 0.06, m.eyeSize, 0, Math.PI * 2);
+  context.fill();
+
+  context.strokeStyle = DEVIL_BROW;
+  context.lineWidth = m.browThickness;
+  context.lineCap = 'round';
+  context.beginPath();
+  context.moveTo(leftEyeX - m.browWidth * 0.58, leftEyeY - m.eyeMaskRy * 1.32);
+  context.quadraticCurveTo(leftEyeX - m.browWidth * 0.08, leftEyeY - m.eyeMaskRy * 1.72, leftEyeX + m.browWidth * 0.54, leftEyeY - m.eyeMaskRy * 1.18);
+  context.stroke();
+  context.beginPath();
+  context.moveTo(rightEyeX - m.browWidth * 0.54, rightEyeY - m.eyeMaskRy2 * 1.28);
+  context.quadraticCurveTo(rightEyeX + m.browWidth * 0.12, rightEyeY - m.eyeMaskRy2 * 1.64, rightEyeX + m.browWidth * 0.6, rightEyeY - m.eyeMaskRy2 * 1.1);
+  context.stroke();
+
+  context.strokeStyle = DEVIL_STROKE;
+  context.lineWidth = Math.max(1, m.browThickness * 0.3);
+  context.beginPath();
+  context.moveTo(-m.neckWidth * 0.18, layout.headCenterY + m.headRy * 0.52);
+  context.quadraticCurveTo(0, layout.headCenterY + m.headRy * 0.72, m.neckWidth * 0.24, layout.headCenterY + m.headRy * 0.58);
+  context.stroke();
+}
+
+function drawDevilFigure(context, metrics, pose = {}) {
+  const m = metrics;
+  const alpha = pose.alpha ?? 1;
+  const breathPhase = pose.breathPhase || 0;
+  const layout = getDevilFigureLayout(m, breathPhase);
+
+  context.save();
+  context.globalAlpha = alpha;
+  context.shadowColor = 'rgba(8, 8, 14, 0.18)';
+  context.shadowBlur = Math.max(4, m.armWidth * 0.55);
+  drawDevilTorso(context, m, layout);
+  context.shadowBlur = 0;
+  drawDevilNeckAndVest(context, m, layout);
+  drawDevilArms(context, m, layout);
+  drawDevilHead(context, m, layout);
+  drawDevilFace(context, m, layout);
   context.restore();
 }
 
@@ -1446,7 +1760,12 @@ function buildPanel() {
 
   const fishMetrics = createFishMetrics(panelRect);
   const sproutMetrics = createSproutMetrics(panelRect);
-  const activeMetrics = selectedCharacter === 'sprout' ? sproutMetrics : fishMetrics;
+  const devilMetrics = createDevilMetrics(panelRect);
+  const activeMetrics = selectedCharacter === 'devil'
+    ? devilMetrics
+    : selectedCharacter === 'sprout'
+      ? sproutMetrics
+      : fishMetrics;
   const blockedSlots = estimateBlockedSlots(activeMetrics, cellWidth, lineHeight, textObstacleClearance);
   const spareSlots = Math.max(12, Math.round(slots.length * 0.06));
   const visibleTarget = Math.min(TARGET_VISIBLE_CHARS, Math.max(120, slots.length - blockedSlots - spareSlots));
@@ -1465,6 +1784,7 @@ function buildPanel() {
     rowCenters,
     fishMetrics,
     sproutMetrics,
+    devilMetrics,
     activeMetrics,
     blockedSlots,
     spareSlots,
@@ -1496,6 +1816,95 @@ function getMotionBounds(layout, layoutCharacter = null) {
     maxX: layout.innerX + layout.innerWidth - motionInsets.right - layout.motionEdgeClearance * 0.55,
     minY: layout.innerY + motionInsets.top + layout.motionEdgeClearance * 0.35,
     maxY: layout.innerY + layout.innerHeight - motionInsets.bottom - layout.motionEdgeClearance * 0.35,
+  };
+}
+
+function createDevilMetrics(panelLayout) {
+  const minDim = Math.min(panelLayout.innerWidth, panelLayout.innerHeight);
+  const panelInnerWidth = panelLayout.innerWidth;
+  const headRx = clamp(minDim * 0.06, 20, 28);
+  const headRy = clamp(minDim * 0.085, 28, 40);
+  const neckHeight = clamp(minDim * 0.026, 8, 14);
+  const neckWidth = clamp(minDim * 0.03, 10, 16);
+  const shoulderWidth = clamp(minDim * 0.09, 30, 44);
+  const torsoWidth = clamp(minDim * 0.076, 24, 34);
+  const torsoHeight = clamp(minDim * 0.2, 68, 96);
+  const armWidth = clamp(minDim * 0.03, 10, 16);
+  const handSize = clamp(minDim * 0.03, 10, 15);
+  const fingerLength = clamp(minDim * 0.045, 14, 22);
+  const eyeMaskRx = clamp(minDim * 0.032, 11, 17);
+  const eyeMaskRy = clamp(minDim * 0.024, 8, 13);
+  const eyeMaskRx2 = clamp(minDim * 0.030, 10, 15);
+  const eyeMaskRy2 = clamp(minDim * 0.028, 10, 15);
+  const eyeOffsetX = clamp(minDim * 0.022, 7, 11);
+  const eyeOffsetY = clamp(minDim * 0.004, 1, 4);
+  const eyeSize = clamp(minDim * 0.0058, 2, 3.2);
+  const browWidth = clamp(minDim * 0.03, 10, 15);
+  const browThickness = clamp(minDim * 0.008, 2.8, 4.8);
+  const hairHeight = clamp(minDim * 0.028, 9, 16);
+  const maxHalfWidth = shoulderWidth + fingerLength + handSize * 0.7;
+  const bodyLength = headRy * 2 + neckHeight + torsoHeight * 1.18;
+  const singleInsetX = shoulderWidth + fingerLength + handSize * 0.7;
+  const basePairGap = shoulderWidth * 1.2;
+
+  return {
+    headRx,
+    headRy,
+    neckHeight,
+    neckWidth,
+    shoulderWidth,
+    torsoWidth,
+    torsoHeight,
+    armWidth,
+    handSize,
+    fingerLength,
+    eyeMaskRx,
+    eyeMaskRy,
+    eyeMaskRx2,
+    eyeMaskRy2,
+    eyeOffsetX,
+    eyeOffsetY,
+    eyeSize,
+    browWidth,
+    browThickness,
+    hairHeight,
+    driftSpeed: clamp(minDim * 0.07, 24, 40),
+    hoverAmplitude: clamp(minDim * 0.018, 7, 16),
+    hoverSpeed: 0.9,
+    swayAmplitude: clamp(minDim * 0.0007, 0.025, 0.055),
+    teleportChance: 0.06,
+    teleportRadius: clamp(minDim * 0.55, 120, 250),
+    bodyLength,
+    maxHalfWidth,
+    pairGap: basePairGap,
+
+    getEffectivePairGap() {
+      const available = panelInnerWidth - singleInsetX * 4;
+      if (available < basePairGap * 3) {
+        return Math.max(shoulderWidth * 0.6, available * 0.25);
+      }
+      return basePairGap;
+    },
+
+    getMotionInsets() {
+      const effectiveGap = this.getEffectivePairGap();
+      return {
+        left: singleInsetX + effectiveGap,
+        right: singleInsetX + effectiveGap,
+        top: headRy + hairHeight + torsoHeight * 0.66,
+        bottom: torsoHeight * 0.7,
+      };
+    },
+
+    estimateBlockedSlots(cellWidth, lineHeight, padding) {
+      const cellArea = Math.max(1, cellWidth * lineHeight);
+      const paddedLength = bodyLength + padding * 2.5;
+      const paddedWidth = maxHalfWidth * 2 + padding * 2.25;
+      const singleArea = paddedLength * paddedWidth * 0.9;
+      const effectiveGap = this.getEffectivePairGap();
+      const gapArea = effectiveGap * paddedLength * 0.45;
+      return Math.ceil(((singleArea * 2 + gapArea) / cellArea) * 1.46);
+    },
   };
 }
 
@@ -1642,6 +2051,54 @@ class ParticleSystem {
       randomBetween(0.5, 1.2),
       randomBetween(0.4, 0.8)
     );
+  }
+
+  emitDevilWisp(x, y) {
+    const particle = this.pool.acquire();
+    if (!particle) {
+      return;
+    }
+
+    particle.vx = randomBetween(-5, 5);
+    particle.vy = randomBetween(-12, -3);
+    this._initCommon(
+      particle,
+      x,
+      y,
+      randomBetween(1.2, 3.0),
+      randomBetween(1.0, 2.5),
+      randomBetween(0.28, 0.58)
+    );
+    particle.hue = randomBetween(260, 290);
+    particle.saturation = randomBetween(46, 74);
+    particle.lightness = randomBetween(58, 78);
+    particle.shape = Math.random() < 0.72 ? 0 : 1;
+  }
+
+  emitDevilTeleport(x, y, count) {
+    for (let index = 0; index < count; index += 1) {
+      const particle = this.pool.acquire();
+      if (!particle) {
+        continue;
+      }
+
+      const angle = Math.random() * Math.PI * 2;
+      const speed = randomBetween(18, 42);
+      particle.vx = Math.cos(angle) * speed;
+      particle.vy = Math.sin(angle) * speed * 0.82;
+      this._initCommon(
+        particle,
+        x,
+        y,
+        randomBetween(2.0, 4.5),
+        randomBetween(0.5, 1.2),
+        randomBetween(0.52, 0.9)
+      );
+      particle.hue = randomBetween(260, 290);
+      particle.saturation = randomBetween(58, 88);
+      particle.lightness = randomBetween(60, 84);
+      particle.shape = Math.random() < 0.55 ? 0 : 2;
+    }
   }
 
   _initCommon(particle, x, y, size, lifetime, maxAlpha) {
@@ -2351,7 +2808,385 @@ class BeanSproutFairy {
   }
 }
 
+class DevilWanderer {
+  constructor(metrics, bounds) {
+    this.metrics = metrics;
+    this.bounds = bounds;
+    this.x = randomBetween(bounds.minX, bounds.maxX);
+    this.y = randomBetween(bounds.minY, bounds.maxY);
+    this.displayY = this.y;
+    this.vx = randomBetween(-1, 1) * metrics.driftSpeed * 0.35;
+    this.vy = randomBetween(-1, 1) * metrics.driftSpeed * 0.2;
+    this.targetX = this.x;
+    this.targetY = this.y;
+    this.alpha = randomBetween(0.72, 0.9);
+    this.swayAngle = 0;
+    this.hoverPhase = Math.random() * Math.PI * 2;
+    this.breathPhase = Math.random() * Math.PI * 2;
+    this.facing = Math.random() < 0.5 ? -1 : 1;
+    this.state = 'drifting';
+    this.stateElapsed = 0;
+    this.pendingTeleportBurst = false;
+    this.pendingTeleportArrival = false;
+    this.teleportBurstX = this.x;
+    this.teleportBurstY = this.displayY;
+    this.wispEmitAccum = 0;
+    this.teleportCooldown = randomBetween(3.2, 5.8);
+    this.pickTarget();
+  }
+
+  pickTarget() {
+    const minDistance = Math.max(this.metrics.shoulderWidth * 2.4, this.metrics.teleportRadius * 0.35);
+    const insetX = (this.bounds.maxX - this.bounds.minX) * 0.02;
+    const insetY = (this.bounds.maxY - this.bounds.minY) * 0.03;
+
+    for (let attempt = 0; attempt < 18; attempt += 1) {
+      const targetX = randomBetween(this.bounds.minX + insetX, this.bounds.maxX - insetX);
+      const targetY = randomBetween(this.bounds.minY + insetY, this.bounds.maxY - insetY);
+      if (Math.hypot(targetX - this.x, targetY - this.y) >= minDistance) {
+        this.targetX = targetX;
+        this.targetY = targetY;
+        return;
+      }
+    }
+
+    this.targetX = randomBetween(this.bounds.minX + insetX, this.bounds.maxX - insetX);
+    this.targetY = randomBetween(this.bounds.minY + insetY, this.bounds.maxY - insetY);
+  }
+
+  pickTeleportDestination() {
+    const minDistance = Math.max(this.metrics.shoulderWidth * 2.2, this.metrics.teleportRadius * 0.32);
+
+    for (let attempt = 0; attempt < 16; attempt += 1) {
+      const angle = Math.random() * Math.PI * 2;
+      const radius = randomBetween(this.metrics.teleportRadius * 0.35, this.metrics.teleportRadius);
+      const nextX = clamp(this.x + Math.cos(angle) * radius, this.bounds.minX, this.bounds.maxX);
+      const nextY = clamp(this.y + Math.sin(angle) * radius * 0.86, this.bounds.minY, this.bounds.maxY);
+      if (Math.hypot(nextX - this.x, nextY - this.y) >= minDistance) {
+        return { x: nextX, y: nextY };
+      }
+    }
+
+    return {
+      x: randomBetween(this.bounds.minX, this.bounds.maxX),
+      y: randomBetween(this.bounds.minY, this.bounds.maxY),
+    };
+  }
+
+  toLocalPoint(px, py) {
+    const dx = px - this.x;
+    const dy = py - this.displayY;
+    const cos = Math.cos(this.swayAngle);
+    const sin = Math.sin(this.swayAngle);
+    return {
+      x: (dx * cos + dy * sin) * this.facing,
+      y: -dx * sin + dy * cos,
+    };
+  }
+
+  updatePhases(dt, timestamp) {
+    const m = this.metrics;
+    this.hoverPhase += dt * m.hoverSpeed;
+    this.breathPhase += dt * 1.2;
+    this._hoverOffset =
+      Math.sin(this.hoverPhase) * m.hoverAmplitude +
+      Math.sin(this.hoverPhase * 0.37) * m.hoverAmplitude * 0.3;
+    this._pulseAlpha = 0.825 + Math.sin(timestamp * 0.00055 + this.hoverPhase * 0.12) * 0.175;
+    const targetSway = Math.sin(timestamp * 0.0008 + this.hoverPhase * 0.18) * m.swayAmplitude;
+    this.swayAngle += (targetSway - this.swayAngle) * (1 - Math.exp(-dt * 4.2));
+  }
+
+  updateDrift(dt, timestamp) {
+    const m = this.metrics;
+    const boundsWidth = Math.max(1, this.bounds.maxX - this.bounds.minX);
+    const boundsHeight = Math.max(1, this.bounds.maxY - this.bounds.minY);
+    const centerX = (this.bounds.minX + this.bounds.maxX) * 0.5;
+    const centerY = (this.bounds.minY + this.bounds.maxY) * 0.5;
+
+    const toTargetX = this.targetX - this.x;
+    const toTargetY = this.targetY - this.y;
+    const targetDistance = Math.hypot(toTargetX, toTargetY);
+    if (targetDistance < Math.max(m.shoulderWidth * 1.9, m.teleportRadius * 0.18)) {
+      this.pickTarget();
+    }
+
+    const targetDir = normalize(this.targetX - this.x, this.targetY - this.y);
+    const centerDir = normalize(centerX - this.x, centerY - this.y);
+    const horizontalBias = clamp((Math.abs(this.x - centerX) / (boundsWidth * 0.5) - 0.80) / 0.20, 0, 1);
+    const verticalBias = clamp((Math.abs(this.y - centerY) / (boundsHeight * 0.5) - 0.78) / 0.22, 0, 1);
+    const centerBias = Math.max(horizontalBias, verticalBias);
+    const driftWaveX = Math.sin(timestamp * 0.00042 + this.hoverPhase * 0.63) * m.driftSpeed * 0.18;
+    const driftWaveY = Math.cos(timestamp * 0.00036 + this.hoverPhase * 0.31) * m.driftSpeed * 0.12;
+    const desiredSpeed = m.driftSpeed * (0.74 + Math.sin(timestamp * 0.00027 + this.hoverPhase) * 0.12);
+    const desiredVx = lerp(targetDir.x, centerDir.x, centerBias * 0.45) * desiredSpeed + driftWaveX;
+    const desiredVy = lerp(targetDir.y, centerDir.y, centerBias * 0.45) * desiredSpeed * 0.88 + driftWaveY;
+    const ease = 1 - Math.exp(-dt * 1.65);
+
+    this.vx += (desiredVx - this.vx) * ease;
+    this.vy += (desiredVy - this.vy) * ease;
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+
+    if (this.x <= this.bounds.minX) {
+      this.x = this.bounds.minX;
+      this.vx = Math.abs(this.vx) * 0.55;
+      this.pickTarget();
+    } else if (this.x >= this.bounds.maxX) {
+      this.x = this.bounds.maxX;
+      this.vx = -Math.abs(this.vx) * 0.55;
+      this.pickTarget();
+    }
+
+    if (this.y <= this.bounds.minY) {
+      this.y = this.bounds.minY;
+      this.vy = Math.abs(this.vy) * 0.55;
+      this.pickTarget();
+    } else if (this.y >= this.bounds.maxY) {
+      this.y = this.bounds.maxY;
+      this.vy = -Math.abs(this.vy) * 0.55;
+      this.pickTarget();
+    }
+  }
+
+  updateTeleportState(dt) {
+    if (this.state === 'drifting') {
+      this.alpha = this._pulseAlpha;
+      this.teleportCooldown = Math.max(0, this.teleportCooldown - dt);
+      if (this.teleportCooldown <= 0 && Math.random() < this.metrics.teleportChance * dt) {
+        this.state = 'fadingOut';
+        this.stateElapsed = 0;
+        this.pendingTeleportBurst = true;
+        this.teleportBurstX = this.x;
+        this.teleportBurstY = this.displayY;
+        this.teleportCooldown = randomBetween(3.4, 6.2);
+      }
+    } else if (this.state === 'fadingOut') {
+      this.stateElapsed += dt;
+      this.vx *= 0.9;
+      this.vy *= 0.9;
+      this.alpha = this._pulseAlpha * (1 - clamp(this.stateElapsed / 0.4, 0, 1));
+
+      if (this.stateElapsed >= 0.4) {
+        const destination = this.pickTeleportDestination();
+        this.x = destination.x;
+        this.y = destination.y;
+        this.vx *= 0.18;
+        this.vy *= 0.18;
+        this.pickTarget();
+        this.pendingTeleportArrival = true;
+        this.state = 'fadingIn';
+        this.stateElapsed = 0;
+      }
+    } else if (this.state === 'fadingIn') {
+      this.stateElapsed += dt;
+      this.alpha = this._pulseAlpha * clamp(this.stateElapsed / 0.4, 0, 1);
+
+      if (this.stateElapsed >= 0.4) {
+        this.state = 'drifting';
+        this.stateElapsed = 0;
+        this.alpha = this._pulseAlpha;
+      }
+    }
+  }
+
+  updateFacing() {
+    const facingThreshold = Math.max(1.4, this.metrics.driftSpeed * 0.1);
+    if (this.vx > facingThreshold) {
+      this.facing = 1;
+    } else if (this.vx < -facingThreshold) {
+      this.facing = -1;
+    }
+  }
+
+  update(dt, timestamp) {
+    this.updatePhases(dt, timestamp);
+    if (this.state === 'drifting') {
+      this.updateDrift(dt, timestamp);
+    }
+    this.displayY = clamp(this.y + this._hoverOffset, this.bounds.minY, this.bounds.maxY);
+    this.updateTeleportState(dt);
+    this.updateFacing();
+  }
+
+  draw(context) {
+    context.save();
+    context.translate(this.x, this.displayY);
+    context.rotate(this.swayAngle);
+    context.scale(this.facing, 1);
+    drawDevilFigure(context, this.metrics, {
+      alpha: this.alpha,
+      breathPhase: this.breathPhase,
+    });
+    context.restore();
+  }
+
+  contains(px, py, padding = 0) {
+    const m = this.metrics;
+    const local = this.toLocalPoint(px, py);
+    const layout = getDevilFigureLayout(m);
+    const torsoHalfWidth = Math.max(layout.torsoHalfTop, layout.torsoHalfBottom) + padding;
+
+    if (pointInOrientedEllipse(local.x, local.y, 0, layout.headCenterY, 0, m.headRx + padding, m.headRy + padding)) {
+      return true;
+    }
+
+    if (
+      local.x >= -torsoHalfWidth &&
+      local.x <= torsoHalfWidth &&
+      local.y >= layout.torsoTopY - padding &&
+      local.y <= layout.torsoBottomY + padding
+    ) {
+      return true;
+    }
+
+    if (
+      pointToSegmentDistance(
+        local.x,
+        local.y,
+        layout.leftShoulder.x,
+        layout.leftShoulder.y,
+        layout.rightHand.x,
+        layout.rightHand.y
+      ) <= m.armWidth * 0.5 + padding
+    ) {
+      return true;
+    }
+
+    return (
+      pointToSegmentDistance(
+        local.x,
+        local.y,
+        layout.rightShoulder.x,
+        layout.rightShoulder.y,
+        layout.leftHand.x,
+        layout.leftHand.y
+      ) <= m.armWidth * 0.5 + padding
+    );
+  }
+
+  emitParticles(particleSystemRef, dt) {
+    if (!particleSystemRef) {
+      return;
+    }
+
+    if (this.pendingTeleportBurst) {
+      particleSystemRef.emitDevilTeleport(this.teleportBurstX, this.teleportBurstY, 12);
+      this.pendingTeleportBurst = false;
+    }
+
+    if (this.pendingTeleportArrival) {
+      particleSystemRef.emitDevilTeleport(this.x, this.displayY, 8);
+      this.pendingTeleportArrival = false;
+    }
+
+    if (this.alpha > 0.3) {
+      this.wispEmitAccum += 25 * dt;
+      while (this.wispEmitAccum >= 1) {
+        const ox = randomBetween(-this.metrics.shoulderWidth, this.metrics.shoulderWidth);
+        const oy = randomBetween(-this.metrics.torsoHeight * 0.5, this.metrics.torsoHeight * 0.3);
+        particleSystemRef.emitDevilWisp(this.x + ox, this.displayY + oy);
+        this.wispEmitAccum -= 1;
+      }
+    }
+  }
+}
+
+class DevilPair {
+  constructor(metrics, bounds) {
+    this.metrics = metrics;
+    this.bounds = bounds;
+    this.effectiveGap = metrics.getEffectivePairGap();
+
+    this.leader = new DevilWanderer(metrics, bounds);
+    this.follower = new DevilWanderer(metrics, bounds);
+
+    this.follower.x = clamp(
+      this.leader.x + this.effectiveGap,
+      bounds.minX, bounds.maxX
+    );
+    this.follower.y = this.leader.y;
+
+    this.leader.facing = 1;
+    this.follower.facing = -1;
+  }
+
+  update(dt, timestamp) {
+    this.leader.update(dt, timestamp);
+
+    this.follower.updatePhases(dt, timestamp);
+
+    const targetX = this.leader.x + this.effectiveGap * this.leader.facing;
+    const targetY = this.leader.y;
+    const ease = 1 - Math.exp(-dt * 2.2);
+    this.follower.x += (targetX - this.follower.x) * ease;
+    this.follower.y += (targetY - this.follower.y) * ease * 0.6;
+    this.follower.x = clamp(this.follower.x, this.bounds.minX, this.bounds.maxX);
+    this.follower.y = clamp(this.follower.y, this.bounds.minY, this.bounds.maxY);
+    this.follower.displayY = clamp(
+      this.follower.y + this.follower._hoverOffset,
+      this.bounds.minY, this.bounds.maxY
+    );
+
+    this.follower.facing = (this.leader.x > this.follower.x) ? 1 : -1;
+
+    if (this.leader.state === 'fadingOut' && this.follower.state !== 'fadingOut') {
+      this.follower.state = 'fadingOut';
+      this.follower.stateElapsed = 0;
+      this.follower.pendingTeleportBurst = true;
+      this.follower.teleportBurstX = this.follower.x;
+      this.follower.teleportBurstY = this.follower.displayY;
+    }
+
+    if (this.leader.state === 'fadingIn' && this.follower.state === 'fadingOut') {
+      this.follower.x = clamp(
+        this.leader.x + this.effectiveGap * this.leader.facing,
+        this.bounds.minX, this.bounds.maxX
+      );
+      this.follower.y = this.leader.y;
+      this.follower.displayY = clamp(
+        this.follower.y + this.follower._hoverOffset,
+        this.bounds.minY, this.bounds.maxY
+      );
+      this.follower.pendingTeleportArrival = true;
+      this.follower.state = 'fadingIn';
+      this.follower.stateElapsed = 0;
+    }
+
+    if (this.follower.state === 'fadingOut') {
+      this.follower.stateElapsed += dt;
+      this.follower.alpha = this.follower._pulseAlpha * (1 - clamp(this.follower.stateElapsed / 0.4, 0, 1));
+    } else if (this.follower.state === 'fadingIn') {
+      this.follower.stateElapsed += dt;
+      this.follower.alpha = this.follower._pulseAlpha * clamp(this.follower.stateElapsed / 0.4, 0, 1);
+      if (this.follower.stateElapsed >= 0.4) {
+        this.follower.state = 'drifting';
+        this.follower.stateElapsed = 0;
+      }
+    } else {
+      this.follower.alpha = this.follower._pulseAlpha;
+    }
+  }
+
+  draw(context) {
+    this.leader.draw(context);
+    this.follower.draw(context);
+  }
+
+  emitParticles(particleSystem, dt) {
+    this.leader.emitParticles(particleSystem, dt);
+    this.follower.emitParticles(particleSystem, dt);
+  }
+
+  contains(px, py, padding = 0) {
+    return this.leader.contains(px, py, padding) || this.follower.contains(px, py, padding);
+  }
+}
+
 function createCharacter(type, panelLayout, bounds) {
+  if (type === 'devil') {
+    const metrics = panelLayout.devilMetrics || createDevilMetrics(panelLayout);
+    return new DevilPair(metrics, bounds);
+  }
   if (type === 'sprout') {
     return new BeanSproutFairy(panelLayout.sproutMetrics || createSproutMetrics(panelLayout), bounds);
   }
@@ -2384,7 +3219,11 @@ function renderIntroFrame() {
     particleSystem.draw(ctx, panel);
   }
   drawText();
+  ctx.save();
+  parchmentPath(ctx, panel);
+  ctx.clip();
   character.draw(ctx);
+  ctx.restore();
 }
 
 function updateFps(dt) {
@@ -2880,7 +3719,11 @@ function loop(timestamp) {
     particleSystem.draw(ctx, panel);
   }
   drawText();
+  ctx.save();
+  parchmentPath(ctx, panel);
+  ctx.clip();
   character.draw(ctx);
+  ctx.restore();
 }
 
 function syncModalState() {
@@ -3280,6 +4123,24 @@ function drawCharacterPreviews() {
         legWidth: 2.1,
         footSize: 3.1,
       }, { walkPhase: 0.6 });
+      previewCtx.restore();
+    } else if (type === 'devil') {
+      const pm = {
+        headRx: 8, headRy: 11, neckHeight: 3.5, neckWidth: 4.5,
+        shoulderWidth: 13, torsoWidth: 11, torsoHeight: 24,
+        armWidth: 3.8, handSize: 4.2, fingerLength: 5.6,
+        eyeMaskRx: 4.6, eyeMaskRy: 3.4, eyeMaskRx2: 4.4, eyeMaskRy2: 3.8,
+        eyeOffsetX: 2.8, eyeOffsetY: 0.6, eyeSize: 0.9,
+        browWidth: 3.6, browThickness: 1.5, hairHeight: 5,
+      };
+      previewCtx.save();
+      previewCtx.translate(w * 0.33, h * 0.64);
+      drawDevilFigure(previewCtx, pm, { alpha: 0.92, breathPhase: 0.8 });
+      previewCtx.restore();
+      previewCtx.save();
+      previewCtx.translate(w * 0.67, h * 0.64);
+      previewCtx.scale(-1, 1);
+      drawDevilFigure(previewCtx, pm, { alpha: 0.92, breathPhase: 1.2 });
       previewCtx.restore();
     }
   });
