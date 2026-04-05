@@ -98,13 +98,17 @@ const SPROUT_CAP = 'rgba(220, 180, 140, 0.96)';
 const SPROUT_STROKE = 'rgba(36, 28, 38, 0.96)';
 const SPROUT_EYE = 'rgba(36, 28, 38, 0.96)';
 const SPROUT_BLUSH = 'rgba(196, 122, 138, 0.58)';
-const DEVIL_SKIN = 'rgba(248, 246, 244, 0.97)';
+const DEVIL_SKIN = 'rgba(255, 255, 255, 0.98)';
 const DEVIL_MASK = 'rgba(8, 4, 12, 0.96)';
 const DEVIL_CLOTH = 'rgba(10, 8, 14, 0.94)';
 const DEVIL_CLOTH_STROKE = 'rgba(4, 2, 6, 0.98)';
 const DEVIL_STROKE = 'rgba(12, 8, 16, 0.97)';
 const DEVIL_SHADOW = 'rgba(60, 50, 70, 0.4)';
 const DEVIL_BROW = 'rgba(8, 4, 12, 0.98)';
+const DEVIL_PAIR_IMAGE_URL = new URL('./assets/devil-pair-reference.svg', import.meta.url).href;
+const DEVIL_PAIR_VIEWBOX_WIDTH = 360;
+const DEVIL_PAIR_VIEWBOX_HEIGHT = 300;
+const DEVIL_PAIR_FALLBACK_ASPECT = DEVIL_PAIR_VIEWBOX_WIDTH / DEVIL_PAIR_VIEWBOX_HEIGHT;
 
 const DEFAULT_BOOK_TEXT_SOURCE = [
   '汚れつちまつた悲しみに',
@@ -152,6 +156,8 @@ let configPreviewToken = 0;
 let particleSystem = null;
 let bgmAudio = null;
 let bgmObjectUrl = null;
+let devilPairTexture = null;
+let devilPairTexturePromise = null;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -208,6 +214,24 @@ function pointInTriangle(px, py, ax, ay, bx, by, cx, cy) {
   const hasNeg = d1 < 0 || d2 < 0 || d3 < 0;
   const hasPos = d1 > 0 || d2 > 0 || d3 > 0;
   return !(hasNeg && hasPos);
+}
+
+function pointInPolygon(px, py, points) {
+  let inside = false;
+
+  for (let index = 0, prev = points.length - 1; index < points.length; prev = index, index += 1) {
+    const current = points[index];
+    const previous = points[prev];
+    const intersects =
+      ((current.y > py) !== (previous.y > py)) &&
+      (px < ((previous.x - current.x) * (py - current.y)) / ((previous.y - current.y) || 1e-6) + current.x);
+
+    if (intersects) {
+      inside = !inside;
+    }
+  }
+
+  return inside;
 }
 
 function pointInOrientedEllipse(px, py, cx, cy, angle, rx, ry) {
@@ -777,6 +801,196 @@ function drawDevilFigure(context, metrics, pose = {}) {
   drawDevilHead(context, m, layout);
   drawDevilFace(context, m, layout);
   context.restore();
+}
+
+async function ensureDevilPairTextureLoaded() {
+  if (devilPairTexture) {
+    return devilPairTexture;
+  }
+
+  if (!devilPairTexturePromise) {
+    devilPairTexturePromise = new Promise((resolve, reject) => {
+      const image = new Image();
+      image.decoding = 'async';
+      image.onload = () => {
+        devilPairTexture = image;
+        resolve(devilPairTexture);
+      };
+      image.onerror = () => {
+        reject(new Error('Failed to load the devil pair SVG.'));
+      };
+      image.src = DEVIL_PAIR_IMAGE_URL;
+    }).catch((error) => {
+      console.warn(error);
+      devilPairTexturePromise = null;
+      return null;
+    });
+  }
+
+  return devilPairTexturePromise;
+}
+
+function getDevilPairImageAspect() {
+  if (devilPairTexture && devilPairTexture.naturalHeight > 0) {
+    return devilPairTexture.naturalWidth / devilPairTexture.naturalHeight;
+  }
+  return DEVIL_PAIR_FALLBACK_ASPECT;
+}
+
+function createDevilPairGeometry(pairWidth) {
+  const scale = pairWidth / DEVIL_PAIR_VIEWBOX_WIDTH;
+  const pairHeight = DEVIL_PAIR_VIEWBOX_HEIGHT * scale;
+  const centerX = DEVIL_PAIR_VIEWBOX_WIDTH * 0.5;
+  const centerY = DEVIL_PAIR_VIEWBOX_HEIGHT * 0.5;
+  const toLocalPoint = (x, y) => ({
+    x: (x - centerX) * scale,
+    y: (y - centerY) * scale,
+  });
+  const toLocalEllipse = (x, y, rx, ry, angle = 0) => ({
+    x: (x - centerX) * scale,
+    y: (y - centerY) * scale,
+    rx: rx * scale,
+    ry: ry * scale,
+    angle,
+  });
+  const torsoPolygons = [
+    [[20, 186], [54, 176], [138, 176], [165, 189], [166, 294], [18, 294]].map(([x, y]) => toLocalPoint(x, y)),
+    [[183, 188], [214, 178], [309, 176], [342, 190], [342, 294], [184, 294]].map(([x, y]) => toLocalPoint(x, y)),
+  ];
+  const handRegions = [
+    toLocalEllipse(155, 173, 18, 12, -0.14),
+    toLocalEllipse(35, 176, 18, 12, 0.15),
+    toLocalEllipse(214, 176, 18, 12, -0.18),
+    toLocalEllipse(315, 178, 18, 12, 0.14),
+  ];
+  const armSegments = [
+    { ...toLocalPoint(24, 229), ...{ bx: toLocalPoint(156, 173).x, by: toLocalPoint(156, 173).y }, radius: 18 * scale },
+    { ...toLocalPoint(138, 233), ...{ bx: toLocalPoint(35, 176).x, by: toLocalPoint(35, 176).y }, radius: 17 * scale },
+    { ...toLocalPoint(196, 232), ...{ bx: toLocalPoint(315, 178).x, by: toLocalPoint(315, 178).y }, radius: 17 * scale },
+    { ...toLocalPoint(338, 235), ...{ bx: toLocalPoint(214, 176).x, by: toLocalPoint(214, 176).y }, radius: 18 * scale },
+  ];
+  const headRegions = [
+    toLocalEllipse(99, 96, 50, 86, -0.03),
+    toLocalEllipse(257, 98, 51, 74, 0.05),
+  ];
+
+  return {
+    pairWidth,
+    pairHeight,
+    maxHalfWidth: pairWidth * 0.5,
+    bodyLength: pairHeight,
+    shoulderWidth: 100 * scale,
+    torsoHeight: 118 * scale,
+    shadowBlur: Math.max(5, pairWidth * 0.075),
+    armThickness: 36 * scale,
+    headRegions,
+    torsoPolygons,
+    handRegions,
+    armSegments,
+    wispBounds: {
+      left: -pairWidth * 0.36,
+      right: pairWidth * 0.36,
+      top: -pairHeight * 0.28,
+      bottom: pairHeight * 0.2,
+    },
+  };
+}
+
+function drawDevilPairSprite(context, metrics, pose = {}) {
+  const alpha = pose.alpha ?? 1;
+  const breathPhase = pose.breathPhase || 0;
+  const pulse = 1 + Math.sin(breathPhase) * 0.014;
+  const verticalOffset = Math.sin(breathPhase * 0.72) * metrics.pairHeight * 0.01;
+
+  context.save();
+  context.globalAlpha = alpha;
+  context.translate(0, verticalOffset);
+  context.scale(pulse, 1 + Math.cos(breathPhase * 0.68) * 0.01);
+
+  if (devilPairTexture) {
+    context.shadowColor = 'rgba(8, 8, 14, 0.16)';
+    context.shadowBlur = metrics.shadowBlur;
+    context.drawImage(
+      devilPairTexture,
+      -metrics.pairWidth * 0.5,
+      -metrics.pairHeight * 0.5,
+      metrics.pairWidth,
+      metrics.pairHeight
+    );
+  } else {
+    context.fillStyle = DEVIL_CLOTH;
+    for (const polygon of metrics.torsoPolygons) {
+      context.beginPath();
+      context.moveTo(polygon[0].x, polygon[0].y);
+      for (let index = 1; index < polygon.length; index += 1) {
+        context.lineTo(polygon[index].x, polygon[index].y);
+      }
+      context.closePath();
+      context.fill();
+    }
+
+    context.strokeStyle = DEVIL_STROKE;
+    context.lineWidth = metrics.armThickness;
+    context.lineCap = 'round';
+    for (const segment of metrics.armSegments) {
+      context.beginPath();
+      context.moveTo(segment.x, segment.y);
+      context.lineTo(segment.bx, segment.by);
+      context.stroke();
+    }
+
+    context.fillStyle = DEVIL_SKIN;
+    for (const region of metrics.headRegions) {
+      context.beginPath();
+      context.ellipse(region.x, region.y, region.rx, region.ry, region.angle, 0, Math.PI * 2);
+      context.fill();
+    }
+    for (const region of metrics.handRegions) {
+      context.beginPath();
+      context.ellipse(region.x, region.y, region.rx, region.ry, region.angle, 0, Math.PI * 2);
+      context.fill();
+    }
+  }
+
+  context.restore();
+}
+
+function devilPairContainsLocalPoint(localX, localY, metrics, padding = 0) {
+  for (const region of metrics.headRegions) {
+    if (pointInOrientedEllipse(localX, localY, region.x, region.y, region.angle, region.rx + padding, region.ry + padding)) {
+      return true;
+    }
+  }
+
+  for (const polygon of metrics.torsoPolygons) {
+    if (pointInPolygon(localX, localY, polygon)) {
+      return true;
+    }
+
+    if (padding > 0) {
+      for (let index = 0; index < polygon.length; index += 1) {
+        const current = polygon[index];
+        const next = polygon[(index + 1) % polygon.length];
+        if (pointToSegmentDistance(localX, localY, current.x, current.y, next.x, next.y) <= padding) {
+          return true;
+        }
+      }
+    }
+  }
+
+  for (const region of metrics.handRegions) {
+    if (pointInOrientedEllipse(localX, localY, region.x, region.y, region.angle, region.rx + padding, region.ry + padding)) {
+      return true;
+    }
+  }
+
+  for (const segment of metrics.armSegments) {
+    if (pointToSegmentDistance(localX, localY, segment.x, segment.y, segment.bx, segment.by) <= segment.radius + padding) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function roundRectPath(context, x, y, width, height, radius) {
@@ -1821,89 +2035,35 @@ function getMotionBounds(layout, layoutCharacter = null) {
 
 function createDevilMetrics(panelLayout) {
   const minDim = Math.min(panelLayout.innerWidth, panelLayout.innerHeight);
-  const panelInnerWidth = panelLayout.innerWidth;
-  const headRx = clamp(minDim * 0.06, 20, 28);
-  const headRy = clamp(minDim * 0.085, 28, 40);
-  const neckHeight = clamp(minDim * 0.026, 8, 14);
-  const neckWidth = clamp(minDim * 0.03, 10, 16);
-  const shoulderWidth = clamp(minDim * 0.09, 30, 44);
-  const torsoWidth = clamp(minDim * 0.076, 24, 34);
-  const torsoHeight = clamp(minDim * 0.2, 68, 96);
-  const armWidth = clamp(minDim * 0.03, 10, 16);
-  const handSize = clamp(minDim * 0.03, 10, 15);
-  const fingerLength = clamp(minDim * 0.045, 14, 22);
-  const eyeMaskRx = clamp(minDim * 0.032, 11, 17);
-  const eyeMaskRy = clamp(minDim * 0.024, 8, 13);
-  const eyeMaskRx2 = clamp(minDim * 0.030, 10, 15);
-  const eyeMaskRy2 = clamp(minDim * 0.028, 10, 15);
-  const eyeOffsetX = clamp(minDim * 0.022, 7, 11);
-  const eyeOffsetY = clamp(minDim * 0.004, 1, 4);
-  const eyeSize = clamp(minDim * 0.0058, 2, 3.2);
-  const browWidth = clamp(minDim * 0.03, 10, 15);
-  const browThickness = clamp(minDim * 0.008, 2.8, 4.8);
-  const hairHeight = clamp(minDim * 0.028, 9, 16);
-  const maxHalfWidth = shoulderWidth + fingerLength + handSize * 0.7;
-  const bodyLength = headRy * 2 + neckHeight + torsoHeight * 1.18;
-  const singleInsetX = shoulderWidth + fingerLength + handSize * 0.7;
-  const basePairGap = shoulderWidth * 1.2;
+  const pairAspect = getDevilPairImageAspect();
+  const preferredWidth = clamp(panelLayout.innerWidth * 0.43, 112, 260);
+  const maxWidthFromHeight = Math.max(108, panelLayout.innerHeight * pairAspect * 0.44);
+  const pairWidth = Math.min(preferredWidth, maxWidthFromHeight);
+  const geometry = createDevilPairGeometry(pairWidth);
 
   return {
-    headRx,
-    headRy,
-    neckHeight,
-    neckWidth,
-    shoulderWidth,
-    torsoWidth,
-    torsoHeight,
-    armWidth,
-    handSize,
-    fingerLength,
-    eyeMaskRx,
-    eyeMaskRy,
-    eyeMaskRx2,
-    eyeMaskRy2,
-    eyeOffsetX,
-    eyeOffsetY,
-    eyeSize,
-    browWidth,
-    browThickness,
-    hairHeight,
+    ...geometry,
     driftSpeed: clamp(minDim * 0.07, 24, 40),
-    hoverAmplitude: clamp(minDim * 0.018, 7, 16),
+    hoverAmplitude: clamp(minDim * 0.016, 6, 14),
     hoverSpeed: 0.9,
-    swayAmplitude: clamp(minDim * 0.0007, 0.025, 0.055),
-    teleportChance: 0.06,
+    swayAmplitude: clamp(minDim * 0.00048, 0.018, 0.038),
+    teleportChance: 0.05,
     teleportRadius: clamp(minDim * 0.55, 120, 250),
-    bodyLength,
-    maxHalfWidth,
-    pairGap: basePairGap,
-
-    getEffectivePairGap() {
-      const available = panelInnerWidth - singleInsetX * 4;
-      if (available < basePairGap * 3) {
-        return Math.max(shoulderWidth * 0.6, available * 0.25);
-      }
-      return basePairGap;
-    },
 
     getMotionInsets() {
-      const effectiveGap = this.getEffectivePairGap();
       return {
-        left: singleInsetX + effectiveGap,
-        right: singleInsetX + effectiveGap,
-        top: headRy + hairHeight + torsoHeight * 0.66,
-        bottom: torsoHeight * 0.7,
+        left: geometry.pairWidth * 0.56,
+        right: geometry.pairWidth * 0.56,
+        top: geometry.pairHeight * 0.56,
+        bottom: geometry.pairHeight * 0.54,
       };
     },
 
     estimateBlockedSlots(cellWidth, lineHeight, padding) {
       const cellArea = Math.max(1, cellWidth * lineHeight);
-      const paddedLength = bodyLength + padding * 2.5;
-      const paddedWidth = maxHalfWidth * 2 + padding * 2.25;
-      const singleArea = paddedLength * paddedWidth * 0.9;
-      const effectiveGap = this.getEffectivePairGap();
-      const gapArea = effectiveGap * paddedLength * 0.45;
-      return Math.ceil(((singleArea * 2 + gapArea) / cellArea) * 1.46);
+      const paddedHeight = geometry.pairHeight + padding * 2.3;
+      const paddedWidth = geometry.pairWidth + padding * 2.1;
+      return Math.ceil(((paddedWidth * paddedHeight * 0.64) / cellArea) * 1.42);
     },
   };
 }
@@ -3095,90 +3255,67 @@ class DevilPair {
   constructor(metrics, bounds) {
     this.metrics = metrics;
     this.bounds = bounds;
-    this.effectiveGap = metrics.getEffectivePairGap();
+    this.anchor = new DevilWanderer(metrics, bounds);
+    this.anchor.facing = 1;
+    this.wispEmitAccum = 0;
+  }
 
-    this.leader = new DevilWanderer(metrics, bounds);
-    this.follower = new DevilWanderer(metrics, bounds);
-
-    this.follower.x = clamp(
-      this.leader.x + this.effectiveGap,
-      bounds.minX, bounds.maxX
-    );
-    this.follower.y = this.leader.y;
-
-    this.leader.facing = 1;
-    this.follower.facing = -1;
+  toLocalPoint(px, py) {
+    const dx = px - this.anchor.x;
+    const dy = py - this.anchor.displayY;
+    const cos = Math.cos(this.anchor.swayAngle);
+    const sin = Math.sin(this.anchor.swayAngle);
+    return {
+      x: dx * cos + dy * sin,
+      y: -dx * sin + dy * cos,
+    };
   }
 
   update(dt, timestamp) {
-    this.leader.update(dt, timestamp);
-
-    this.follower.updatePhases(dt, timestamp);
-
-    const targetX = this.leader.x + this.effectiveGap * this.leader.facing;
-    const targetY = this.leader.y;
-    const ease = 1 - Math.exp(-dt * 2.2);
-    this.follower.x += (targetX - this.follower.x) * ease;
-    this.follower.y += (targetY - this.follower.y) * ease * 0.6;
-    this.follower.x = clamp(this.follower.x, this.bounds.minX, this.bounds.maxX);
-    this.follower.y = clamp(this.follower.y, this.bounds.minY, this.bounds.maxY);
-    this.follower.displayY = clamp(
-      this.follower.y + this.follower._hoverOffset,
-      this.bounds.minY, this.bounds.maxY
-    );
-
-    this.follower.facing = (this.leader.x > this.follower.x) ? 1 : -1;
-
-    if (this.leader.state === 'fadingOut' && this.follower.state !== 'fadingOut') {
-      this.follower.state = 'fadingOut';
-      this.follower.stateElapsed = 0;
-      this.follower.pendingTeleportBurst = true;
-      this.follower.teleportBurstX = this.follower.x;
-      this.follower.teleportBurstY = this.follower.displayY;
-    }
-
-    if (this.leader.state === 'fadingIn' && this.follower.state === 'fadingOut') {
-      this.follower.x = clamp(
-        this.leader.x + this.effectiveGap * this.leader.facing,
-        this.bounds.minX, this.bounds.maxX
-      );
-      this.follower.y = this.leader.y;
-      this.follower.displayY = clamp(
-        this.follower.y + this.follower._hoverOffset,
-        this.bounds.minY, this.bounds.maxY
-      );
-      this.follower.pendingTeleportArrival = true;
-      this.follower.state = 'fadingIn';
-      this.follower.stateElapsed = 0;
-    }
-
-    if (this.follower.state === 'fadingOut') {
-      this.follower.stateElapsed += dt;
-      this.follower.alpha = this.follower._pulseAlpha * (1 - clamp(this.follower.stateElapsed / 0.4, 0, 1));
-    } else if (this.follower.state === 'fadingIn') {
-      this.follower.stateElapsed += dt;
-      this.follower.alpha = this.follower._pulseAlpha * clamp(this.follower.stateElapsed / 0.4, 0, 1);
-      if (this.follower.stateElapsed >= 0.4) {
-        this.follower.state = 'drifting';
-        this.follower.stateElapsed = 0;
-      }
-    } else {
-      this.follower.alpha = this.follower._pulseAlpha;
-    }
+    this.anchor.update(dt, timestamp);
+    this.anchor.facing = 1;
   }
 
   draw(context) {
-    this.leader.draw(context);
-    this.follower.draw(context);
+    context.save();
+    context.translate(this.anchor.x, this.anchor.displayY);
+    context.rotate(this.anchor.swayAngle);
+    drawDevilPairSprite(context, this.metrics, {
+      alpha: this.anchor.alpha,
+      breathPhase: this.anchor.breathPhase,
+    });
+    context.restore();
   }
 
   emitParticles(particleSystem, dt) {
-    this.leader.emitParticles(particleSystem, dt);
-    this.follower.emitParticles(particleSystem, dt);
+    if (!particleSystem) {
+      return;
+    }
+
+    if (this.anchor.pendingTeleportBurst) {
+      particleSystem.emitDevilTeleport(this.anchor.teleportBurstX, this.anchor.teleportBurstY, 14);
+      this.anchor.pendingTeleportBurst = false;
+    }
+
+    if (this.anchor.pendingTeleportArrival) {
+      particleSystem.emitDevilTeleport(this.anchor.x, this.anchor.displayY, 10);
+      this.anchor.pendingTeleportArrival = false;
+    }
+
+    if (this.anchor.alpha > 0.3) {
+      this.wispEmitAccum += 28 * dt;
+      while (this.wispEmitAccum >= 1) {
+        const ox = randomBetween(this.metrics.wispBounds.left, this.metrics.wispBounds.right);
+        const oy = randomBetween(this.metrics.wispBounds.top, this.metrics.wispBounds.bottom);
+        particleSystem.emitDevilWisp(this.anchor.x + ox, this.anchor.displayY + oy);
+        this.wispEmitAccum -= 1;
+      }
+    }
   }
 
   contains(px, py, padding = 0) {
-    return this.leader.contains(px, py, padding) || this.follower.contains(px, py, padding);
+    const local = this.toLocalPoint(px, py);
+    return devilPairContainsLocalPoint(local.x, local.y, this.metrics, padding);
   }
 }
 
@@ -4125,22 +4262,11 @@ function drawCharacterPreviews() {
       }, { walkPhase: 0.6 });
       previewCtx.restore();
     } else if (type === 'devil') {
-      const pm = {
-        headRx: 8, headRy: 11, neckHeight: 3.5, neckWidth: 4.5,
-        shoulderWidth: 13, torsoWidth: 11, torsoHeight: 24,
-        armWidth: 3.8, handSize: 4.2, fingerLength: 5.6,
-        eyeMaskRx: 4.6, eyeMaskRy: 3.4, eyeMaskRx2: 4.4, eyeMaskRy2: 3.8,
-        eyeOffsetX: 2.8, eyeOffsetY: 0.6, eyeSize: 0.9,
-        browWidth: 3.6, browThickness: 1.5, hairHeight: 5,
-      };
+      const previewWidth = Math.min(w * 0.82, h * getDevilPairImageAspect() * 0.9);
+      const pm = createDevilPairGeometry(previewWidth);
       previewCtx.save();
-      previewCtx.translate(w * 0.33, h * 0.64);
-      drawDevilFigure(previewCtx, pm, { alpha: 0.92, breathPhase: 0.8 });
-      previewCtx.restore();
-      previewCtx.save();
-      previewCtx.translate(w * 0.67, h * 0.64);
-      previewCtx.scale(-1, 1);
-      drawDevilFigure(previewCtx, pm, { alpha: 0.92, breathPhase: 1.2 });
+      previewCtx.translate(w * 0.5, h * 0.52);
+      drawDevilPairSprite(previewCtx, pm, { alpha: 0.95, breathPhase: 0.9 });
       previewCtx.restore();
     }
   });
@@ -4151,7 +4277,10 @@ function drawCharacterPreviews() {
   syncCssSettings();
   const checkedRadio = document.querySelector('input[name="character"]:checked');
   selectedCharacter = checkedRadio ? checkedRadio.value : selectedCharacter;
-  await ensureFontLoaded(settings.fontFamily);
+  await Promise.all([
+    ensureFontLoaded(settings.fontFamily),
+    ensureDevilPairTextureLoaded(),
+  ]);
   rebuildScene();
   renderIntroFrame();
   drawCharacterPreviews();
