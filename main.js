@@ -108,6 +108,7 @@ const DEVIL_BROW = 'rgba(8, 4, 12, 0.98)';
 const DEVIL_PAIR_VIEWBOX_WIDTH = 360;
 const DEVIL_PAIR_VIEWBOX_HEIGHT = 300;
 const DEVIL_PAIR_ASPECT = DEVIL_PAIR_VIEWBOX_WIDTH / DEVIL_PAIR_VIEWBOX_HEIGHT;
+const DEVIL_PAIR_SPRITE_URL = new URL('./assets/devil-pair-sprite.png', import.meta.url).href;
 
 const DEFAULT_BOOK_TEXT_SOURCE = [
   '汚れつちまつた悲しみに',
@@ -156,6 +157,8 @@ let particleSystem = null;
 let bgmAudio = null;
 let bgmObjectUrl = null;
 let devilPairMeshPatternSource = null;
+let devilPairSpriteImage = null;
+let devilPairSpritePromise = null;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -250,6 +253,40 @@ function pointToSegmentDistance(px, py, ax, ay, bx, by) {
   const closestX = ax + abx * t;
   const closestY = ay + aby * t;
   return Math.hypot(px - closestX, py - closestY);
+}
+
+function loadImage(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.decoding = 'async';
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(`Failed to load image: ${url}`));
+    image.src = url;
+  });
+}
+
+async function ensureDevilPairSpriteLoaded() {
+  if (devilPairSpriteImage) {
+    return devilPairSpriteImage;
+  }
+
+  if (devilPairSpritePromise) {
+    return devilPairSpritePromise;
+  }
+
+  devilPairSpritePromise = (async () => {
+    try {
+      devilPairSpriteImage = await loadImage(DEVIL_PAIR_SPRITE_URL);
+      return devilPairSpriteImage;
+    } catch (error) {
+      console.warn('Failed to load devil sprite image.', error);
+      return null;
+    } finally {
+      devilPairSpritePromise = null;
+    }
+  })();
+
+  return devilPairSpritePromise;
 }
 
 function strokeOutlinedPath(context, outerWidth, innerWidth, outlineColor, fillColor, pathBuilder) {
@@ -818,6 +855,39 @@ function ensureDevilPairMeshSource() {
   return c;
 }
 
+function drawReferenceDevilPairSprite(context) {
+  if (!devilPairSpriteImage) {
+    return false;
+  }
+
+  const spriteWidth = devilPairSpriteImage.naturalWidth || devilPairSpriteImage.width;
+  const spriteHeight = devilPairSpriteImage.naturalHeight || devilPairSpriteImage.height;
+  const fitScale = Math.min(
+    (DEVIL_PAIR_VIEWBOX_WIDTH * 0.97) / spriteWidth,
+    (DEVIL_PAIR_VIEWBOX_HEIGHT * 0.98) / spriteHeight,
+  );
+  const drawWidth = spriteWidth * fitScale;
+  const drawHeight = spriteHeight * fitScale;
+  const drawX = (DEVIL_PAIR_VIEWBOX_WIDTH - drawWidth) * 0.5;
+  const drawY = DEVIL_PAIR_VIEWBOX_HEIGHT - drawHeight;
+
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(devilPairSpriteImage, drawX, drawY, drawWidth, drawHeight);
+  return true;
+}
+
+function drawVectorDevilPairSprite(context) {
+  const meshSource = ensureDevilPairMeshSource();
+  const meshPattern = context.createPattern(meshSource, 'repeat');
+
+  drawDevilPairLeftFigure(context);
+  context.shadowColor = 'transparent';
+  context.shadowBlur = 0;
+  context.shadowOffsetY = 0;
+  drawDevilPairRightFigure(context, meshPattern);
+}
+
 function drawPairFingerGroup(ctx, rotateDeg, pivotX, pivotY, fingers, palmCx, palmCy, palmRx, palmRy) {
   ctx.save();
   ctx.translate(pivotX, pivotY);
@@ -1318,19 +1388,9 @@ function drawDevilPairSprite(context, metrics, pose = {}) {
   context.shadowColor = 'rgba(7, 8, 13, 0.12)';
   context.shadowOffsetY = 8;
   context.shadowBlur = 20;
-
-  // Create mesh pattern for right figure's sleeves
-  const meshSource = ensureDevilPairMeshSource();
-  const meshPattern = context.createPattern(meshSource, 'repeat');
-
-  drawDevilPairLeftFigure(context);
-
-  // Reset shadow after first figure to avoid double-shadowing
-  context.shadowColor = 'transparent';
-  context.shadowBlur = 0;
-  context.shadowOffsetY = 0;
-
-  drawDevilPairRightFigure(context, meshPattern);
+  if (!drawReferenceDevilPairSprite(context)) {
+    drawVectorDevilPairSprite(context);
+  }
 
   context.restore();
 }
@@ -4351,7 +4411,10 @@ async function applySceneSettings(nextSettings, options = {}) {
 
   syncCssSettings();
   const previewToken = ++configPreviewToken;
-  await ensureFontLoaded(settings.fontFamily);
+  await Promise.all([
+    ensureFontLoaded(settings.fontFamily),
+    ensureDevilPairSpriteLoaded(),
+  ]);
   if (previewToken !== configPreviewToken) {
     return;
   }
@@ -4657,7 +4720,10 @@ function drawCharacterPreviews() {
   syncCssSettings();
   const checkedRadio = document.querySelector('input[name="character"]:checked');
   selectedCharacter = checkedRadio ? checkedRadio.value : selectedCharacter;
-  await ensureFontLoaded(settings.fontFamily);
+  await Promise.all([
+    ensureFontLoaded(settings.fontFamily),
+    ensureDevilPairSpriteLoaded(),
+  ]);
   rebuildScene();
   renderIntroFrame();
   drawCharacterPreviews();
