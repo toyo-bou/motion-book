@@ -108,6 +108,9 @@ const DEVIL_BROW = 'rgba(8, 4, 12, 0.98)';
 const DEVIL_PAIR_VIEWBOX_WIDTH = 360;
 const DEVIL_PAIR_VIEWBOX_HEIGHT = 300;
 const DEVIL_PAIR_ASPECT = DEVIL_PAIR_VIEWBOX_WIDTH / DEVIL_PAIR_VIEWBOX_HEIGHT;
+const DEVIL_PAIR_HEM_RADIUS = 42;
+const DEVIL_PAIR_HEM_BLEED = 3;
+const DEVIL_PAIR_HEM_CLEANUP = 2;
 const DEVIL_PAIR_SPRITE_URL = new URL('./assets/devil-pair-sprite.png', import.meta.url).href;
 
 const DEFAULT_BOOK_TEXT_SOURCE = [
@@ -1314,6 +1317,7 @@ function createDevilPairGeometry(pairWidth) {
   const pairHeight = DEVIL_PAIR_VIEWBOX_HEIGHT * scale;
   const centerX = DEVIL_PAIR_VIEWBOX_WIDTH * 0.5;
   const centerY = DEVIL_PAIR_VIEWBOX_HEIGHT * 0.5;
+  const hemRadius = (DEVIL_PAIR_HEM_RADIUS + DEVIL_PAIR_HEM_BLEED) * scale;
   const toLocalPoint = (x, y) => ({
     x: (x - centerX) * scale,
     y: (y - centerY) * scale,
@@ -1345,6 +1349,20 @@ function createDevilPairGeometry(pairWidth) {
     toLocalEllipse(99, 96, 50, 86, -0.03),
     toLocalEllipse(257, 98, 51, 74, 0.05),
   ];
+  const hemCutouts = [
+    {
+      corner: 'bl',
+      x: toLocalPoint(18, 294).x,
+      y: toLocalPoint(18, 294).y,
+      radius: hemRadius,
+    },
+    {
+      corner: 'br',
+      x: toLocalPoint(342, 294).x,
+      y: toLocalPoint(342, 294).y,
+      radius: hemRadius,
+    },
+  ];
 
   return {
     pairWidth,
@@ -1357,6 +1375,7 @@ function createDevilPairGeometry(pairWidth) {
     armThickness: 36 * scale,
     headRegions,
     torsoPolygons,
+    hemCutouts,
     handRegions,
     armSegments,
     wispBounds: {
@@ -1366,6 +1385,84 @@ function createDevilPairGeometry(pairWidth) {
       bottom: pairHeight * 0.2,
     },
   };
+}
+
+function appendDevilHemCutoutPath(context, corner, edgeX, edgeY, radius) {
+  if (corner === 'bl') {
+    context.moveTo(edgeX, edgeY - radius);
+    context.lineTo(edgeX, edgeY);
+    context.lineTo(edgeX + radius, edgeY);
+    context.arc(edgeX + radius, edgeY - radius, radius, Math.PI / 2, Math.PI);
+    context.closePath();
+    return;
+  }
+
+  context.moveTo(edgeX, edgeY - radius);
+  context.lineTo(edgeX, edgeY);
+  context.lineTo(edgeX - radius, edgeY);
+  context.arc(edgeX - radius, edgeY - radius, radius, Math.PI / 2, 0, true);
+  context.closePath();
+}
+
+function clipDevilPairHem(context) {
+  context.beginPath();
+  context.rect(-24, -24, DEVIL_PAIR_VIEWBOX_WIDTH + 48, DEVIL_PAIR_VIEWBOX_HEIGHT + 48);
+  appendDevilHemCutoutPath(context, 'bl', 18, 294, DEVIL_PAIR_HEM_RADIUS + DEVIL_PAIR_HEM_BLEED);
+  appendDevilHemCutoutPath(context, 'br', 342, 294, DEVIL_PAIR_HEM_RADIUS + DEVIL_PAIR_HEM_BLEED);
+  context.clip('evenodd');
+}
+
+function eraseDevilPairHem(context) {
+  context.save();
+  context.globalCompositeOperation = 'destination-out';
+  context.beginPath();
+  appendDevilHemCutoutPath(
+    context,
+    'bl',
+    18,
+    294,
+    DEVIL_PAIR_HEM_RADIUS + DEVIL_PAIR_HEM_BLEED + DEVIL_PAIR_HEM_CLEANUP
+  );
+  appendDevilHemCutoutPath(
+    context,
+    'br',
+    342,
+    294,
+    DEVIL_PAIR_HEM_RADIUS + DEVIL_PAIR_HEM_BLEED + DEVIL_PAIR_HEM_CLEANUP
+  );
+  context.fill();
+  context.restore();
+}
+
+function pointInDevilHemCutout(px, py, cutout, padding = 0) {
+  const radius = Math.max(0, cutout.radius - padding);
+  if (radius <= 0) {
+    return false;
+  }
+
+  if (cutout.corner === 'bl') {
+    if (px < cutout.x || px > cutout.x + radius || py < cutout.y - radius || py > cutout.y) {
+      return false;
+    }
+
+    const dx = px - (cutout.x + radius);
+    const dy = py - (cutout.y - radius);
+    return dx * dx + dy * dy > radius * radius;
+  }
+
+  if (px < cutout.x - radius || px > cutout.x || py < cutout.y - radius || py > cutout.y) {
+    return false;
+  }
+
+  const dx = px - (cutout.x - radius);
+  const dy = py - (cutout.y - radius);
+  return dx * dx + dy * dy > radius * radius;
+}
+
+function pointInAnyDevilHemCutout(px, py, metrics, padding = 0) {
+  return Array.isArray(metrics.hemCutouts)
+    ? metrics.hemCutouts.some((cutout) => pointInDevilHemCutout(px, py, cutout, padding))
+    : false;
 }
 
 function drawDevilPairSprite(context, metrics, pose = {}) {
@@ -1385,12 +1482,17 @@ function drawDevilPairSprite(context, metrics, pose = {}) {
   context.translate(-DEVIL_PAIR_VIEWBOX_WIDTH * 0.5, -DEVIL_PAIR_VIEWBOX_HEIGHT * 0.5);
 
   // Drop shadow approximation
+  context.save();
+  clipDevilPairHem(context);
   context.shadowColor = 'rgba(7, 8, 13, 0.12)';
   context.shadowOffsetY = 8;
   context.shadowBlur = 20;
   if (!drawReferenceDevilPairSprite(context)) {
     drawVectorDevilPairSprite(context);
   }
+  context.restore();
+
+  eraseDevilPairHem(context);
 
   context.restore();
 }
@@ -1403,7 +1505,7 @@ function devilPairContainsLocalPoint(localX, localY, metrics, padding = 0) {
   }
 
   for (const polygon of metrics.torsoPolygons) {
-    if (pointInPolygon(localX, localY, polygon)) {
+    if (pointInPolygon(localX, localY, polygon) && !pointInAnyDevilHemCutout(localX, localY, metrics, padding)) {
       return true;
     }
 
@@ -1411,7 +1513,10 @@ function devilPairContainsLocalPoint(localX, localY, metrics, padding = 0) {
       for (let index = 0; index < polygon.length; index += 1) {
         const current = polygon[index];
         const next = polygon[(index + 1) % polygon.length];
-        if (pointToSegmentDistance(localX, localY, current.x, current.y, next.x, next.y) <= padding) {
+        if (
+          pointToSegmentDistance(localX, localY, current.x, current.y, next.x, next.y) <= padding &&
+          !pointInAnyDevilHemCutout(localX, localY, metrics, padding)
+        ) {
           return true;
         }
       }
@@ -2487,8 +2592,6 @@ function createDevilMetrics(panelLayout) {
     hoverAmplitude: clamp(minDim * 0.016, 6, 14),
     hoverSpeed: 0.9,
     swayAmplitude: clamp(minDim * 0.00048, 0.018, 0.038),
-    teleportChance: 0.05,
-    teleportRadius: clamp(minDim * 0.55, 120, 250),
 
     getMotionInsets() {
       return {
@@ -2673,32 +2776,6 @@ class ParticleSystem {
     particle.saturation = randomBetween(46, 74);
     particle.lightness = randomBetween(58, 78);
     particle.shape = Math.random() < 0.72 ? 0 : 1;
-  }
-
-  emitDevilTeleport(x, y, count) {
-    for (let index = 0; index < count; index += 1) {
-      const particle = this.pool.acquire();
-      if (!particle) {
-        continue;
-      }
-
-      const angle = Math.random() * Math.PI * 2;
-      const speed = randomBetween(18, 42);
-      particle.vx = Math.cos(angle) * speed;
-      particle.vy = Math.sin(angle) * speed * 0.82;
-      this._initCommon(
-        particle,
-        x,
-        y,
-        randomBetween(2.0, 4.5),
-        randomBetween(0.5, 1.2),
-        randomBetween(0.52, 0.9)
-      );
-      particle.hue = randomBetween(260, 290);
-      particle.saturation = randomBetween(58, 88);
-      particle.lightness = randomBetween(60, 84);
-      particle.shape = Math.random() < 0.55 ? 0 : 2;
-    }
   }
 
   _initCommon(particle, x, y, size, lifetime, maxAlpha) {
@@ -3419,24 +3496,17 @@ class DevilWanderer {
     this.vy = randomBetween(-1, 1) * metrics.driftSpeed * 0.2;
     this.targetX = this.x;
     this.targetY = this.y;
-    this.alpha = randomBetween(0.72, 0.9);
+    this.alpha = 1;
     this.swayAngle = 0;
     this.hoverPhase = Math.random() * Math.PI * 2;
     this.breathPhase = Math.random() * Math.PI * 2;
     this.facing = Math.random() < 0.5 ? -1 : 1;
-    this.state = 'drifting';
-    this.stateElapsed = 0;
-    this.pendingTeleportBurst = false;
-    this.pendingTeleportArrival = false;
-    this.teleportBurstX = this.x;
-    this.teleportBurstY = this.displayY;
     this.wispEmitAccum = 0;
-    this.teleportCooldown = randomBetween(3.2, 5.8);
     this.pickTarget();
   }
 
   pickTarget() {
-    const minDistance = Math.max(this.metrics.shoulderWidth * 2.4, this.metrics.teleportRadius * 0.35);
+    const minDistance = this.metrics.shoulderWidth * 2.4;
     const insetX = (this.bounds.maxX - this.bounds.minX) * 0.02;
     const insetY = (this.bounds.maxY - this.bounds.minY) * 0.03;
 
@@ -3452,25 +3522,6 @@ class DevilWanderer {
 
     this.targetX = randomBetween(this.bounds.minX + insetX, this.bounds.maxX - insetX);
     this.targetY = randomBetween(this.bounds.minY + insetY, this.bounds.maxY - insetY);
-  }
-
-  pickTeleportDestination() {
-    const minDistance = Math.max(this.metrics.shoulderWidth * 2.2, this.metrics.teleportRadius * 0.32);
-
-    for (let attempt = 0; attempt < 16; attempt += 1) {
-      const angle = Math.random() * Math.PI * 2;
-      const radius = randomBetween(this.metrics.teleportRadius * 0.35, this.metrics.teleportRadius);
-      const nextX = clamp(this.x + Math.cos(angle) * radius, this.bounds.minX, this.bounds.maxX);
-      const nextY = clamp(this.y + Math.sin(angle) * radius * 0.86, this.bounds.minY, this.bounds.maxY);
-      if (Math.hypot(nextX - this.x, nextY - this.y) >= minDistance) {
-        return { x: nextX, y: nextY };
-      }
-    }
-
-    return {
-      x: randomBetween(this.bounds.minX, this.bounds.maxX),
-      y: randomBetween(this.bounds.minY, this.bounds.maxY),
-    };
   }
 
   toLocalPoint(px, py) {
@@ -3491,7 +3542,6 @@ class DevilWanderer {
     this._hoverOffset =
       Math.sin(this.hoverPhase) * m.hoverAmplitude +
       Math.sin(this.hoverPhase * 0.37) * m.hoverAmplitude * 0.3;
-    this._pulseAlpha = 0.825 + Math.sin(timestamp * 0.00055 + this.hoverPhase * 0.12) * 0.175;
     const targetSway = Math.sin(timestamp * 0.0008 + this.hoverPhase * 0.18) * m.swayAmplitude;
     this.swayAngle += (targetSway - this.swayAngle) * (1 - Math.exp(-dt * 4.2));
   }
@@ -3506,7 +3556,7 @@ class DevilWanderer {
     const toTargetX = this.targetX - this.x;
     const toTargetY = this.targetY - this.y;
     const targetDistance = Math.hypot(toTargetX, toTargetY);
-    if (targetDistance < Math.max(m.shoulderWidth * 1.9, m.teleportRadius * 0.18)) {
+    if (targetDistance < m.shoulderWidth * 1.9) {
       this.pickTarget();
     }
 
@@ -3548,47 +3598,6 @@ class DevilWanderer {
     }
   }
 
-  updateTeleportState(dt) {
-    if (this.state === 'drifting') {
-      this.alpha = this._pulseAlpha;
-      this.teleportCooldown = Math.max(0, this.teleportCooldown - dt);
-      if (this.teleportCooldown <= 0 && Math.random() < this.metrics.teleportChance * dt) {
-        this.state = 'fadingOut';
-        this.stateElapsed = 0;
-        this.pendingTeleportBurst = true;
-        this.teleportBurstX = this.x;
-        this.teleportBurstY = this.displayY;
-        this.teleportCooldown = randomBetween(3.4, 6.2);
-      }
-    } else if (this.state === 'fadingOut') {
-      this.stateElapsed += dt;
-      this.vx *= 0.9;
-      this.vy *= 0.9;
-      this.alpha = this._pulseAlpha * (1 - clamp(this.stateElapsed / 0.4, 0, 1));
-
-      if (this.stateElapsed >= 0.4) {
-        const destination = this.pickTeleportDestination();
-        this.x = destination.x;
-        this.y = destination.y;
-        this.vx *= 0.18;
-        this.vy *= 0.18;
-        this.pickTarget();
-        this.pendingTeleportArrival = true;
-        this.state = 'fadingIn';
-        this.stateElapsed = 0;
-      }
-    } else if (this.state === 'fadingIn') {
-      this.stateElapsed += dt;
-      this.alpha = this._pulseAlpha * clamp(this.stateElapsed / 0.4, 0, 1);
-
-      if (this.stateElapsed >= 0.4) {
-        this.state = 'drifting';
-        this.stateElapsed = 0;
-        this.alpha = this._pulseAlpha;
-      }
-    }
-  }
-
   updateFacing() {
     const facingThreshold = Math.max(1.4, this.metrics.driftSpeed * 0.1);
     if (this.vx > facingThreshold) {
@@ -3600,11 +3609,9 @@ class DevilWanderer {
 
   update(dt, timestamp) {
     this.updatePhases(dt, timestamp);
-    if (this.state === 'drifting') {
-      this.updateDrift(dt, timestamp);
-    }
+    this.updateDrift(dt, timestamp);
     this.displayY = clamp(this.y + this._hoverOffset, this.bounds.minY, this.bounds.maxY);
-    this.updateTeleportState(dt);
+    this.alpha = 1;
     this.updateFacing();
   }
 
@@ -3669,24 +3676,12 @@ class DevilWanderer {
       return;
     }
 
-    if (this.pendingTeleportBurst) {
-      particleSystemRef.emitDevilTeleport(this.teleportBurstX, this.teleportBurstY, 12);
-      this.pendingTeleportBurst = false;
-    }
-
-    if (this.pendingTeleportArrival) {
-      particleSystemRef.emitDevilTeleport(this.x, this.displayY, 8);
-      this.pendingTeleportArrival = false;
-    }
-
-    if (this.alpha > 0.3) {
-      this.wispEmitAccum += 25 * dt;
-      while (this.wispEmitAccum >= 1) {
-        const ox = randomBetween(-this.metrics.shoulderWidth, this.metrics.shoulderWidth);
-        const oy = randomBetween(-this.metrics.torsoHeight * 0.5, this.metrics.torsoHeight * 0.3);
-        particleSystemRef.emitDevilWisp(this.x + ox, this.displayY + oy);
-        this.wispEmitAccum -= 1;
-      }
+    this.wispEmitAccum += 25 * dt;
+    while (this.wispEmitAccum >= 1) {
+      const ox = randomBetween(-this.metrics.shoulderWidth, this.metrics.shoulderWidth);
+      const oy = randomBetween(-this.metrics.torsoHeight * 0.5, this.metrics.torsoHeight * 0.3);
+      particleSystemRef.emitDevilWisp(this.x + ox, this.displayY + oy);
+      this.wispEmitAccum -= 1;
     }
   }
 }
@@ -3732,24 +3727,12 @@ class DevilPair {
       return;
     }
 
-    if (this.anchor.pendingTeleportBurst) {
-      particleSystem.emitDevilTeleport(this.anchor.teleportBurstX, this.anchor.teleportBurstY, 14);
-      this.anchor.pendingTeleportBurst = false;
-    }
-
-    if (this.anchor.pendingTeleportArrival) {
-      particleSystem.emitDevilTeleport(this.anchor.x, this.anchor.displayY, 10);
-      this.anchor.pendingTeleportArrival = false;
-    }
-
-    if (this.anchor.alpha > 0.3) {
-      this.wispEmitAccum += 28 * dt;
-      while (this.wispEmitAccum >= 1) {
-        const ox = randomBetween(this.metrics.wispBounds.left, this.metrics.wispBounds.right);
-        const oy = randomBetween(this.metrics.wispBounds.top, this.metrics.wispBounds.bottom);
-        particleSystem.emitDevilWisp(this.anchor.x + ox, this.anchor.displayY + oy);
-        this.wispEmitAccum -= 1;
-      }
+    this.wispEmitAccum += 28 * dt;
+    while (this.wispEmitAccum >= 1) {
+      const ox = randomBetween(this.metrics.wispBounds.left, this.metrics.wispBounds.right);
+      const oy = randomBetween(this.metrics.wispBounds.top, this.metrics.wispBounds.bottom);
+      particleSystem.emitDevilWisp(this.anchor.x + ox, this.anchor.displayY + oy);
+      this.wispEmitAccum -= 1;
     }
   }
 
