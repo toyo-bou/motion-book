@@ -39,6 +39,7 @@ const MAX_FONT_SIZE = 24;
 const LINE_HEIGHT_RATIO = 1.72;
 const CJK_WIDTH_RATIO = 1.28;
 const TARGET_VISIBLE_CHARS = 600;
+const MIN_VISIBLE_CHARS = 120;
 const A4_ASPECT_RATIO = 1 / Math.sqrt(2);
 const PARCHMENT_SCALE = 1.1;
 const MIN_TEXT_FLOW_INTERVAL_MS = 50;
@@ -56,22 +57,38 @@ const FONT_OPTIONS = Object.freeze({
   'kiwi-maru': {
     label: 'Kiwi Maru',
     loadName: 'Kiwi Maru',
+    weight: 300,
     stack: '"Kiwi Maru", "Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif',
+  },
+  'hachi-maru-pop': {
+    label: 'Hachi Maru Pop',
+    loadName: 'Hachi Maru Pop',
+    weight: 400,
+    stack: '"Hachi Maru Pop", "Kiwi Maru", "Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif',
   },
   'yu-gothic': {
     label: 'Yu Gothic',
     loadName: 'Yu Gothic',
+    weight: 300,
     stack: '"Yu Gothic", "Hiragino Kaku Gothic ProN", sans-serif',
   },
   'm-plus-code': {
     label: 'M PLUS 1 Code',
     loadName: 'M PLUS 1 Code',
+    weight: 300,
     stack: '"M PLUS 1 Code", "Hiragino Sans", "Yu Gothic", monospace',
   },
   'shippori-mincho': {
     label: 'Shippori Mincho',
     loadName: 'Shippori Mincho',
+    weight: 400,
     stack: '"Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif',
+  },
+  'yuji-boku': {
+    label: 'Yuji Boku',
+    loadName: 'Yuji Boku',
+    weight: 400,
+    stack: '"Yuji Boku", "Hiragino Mincho ProN", "Yu Mincho", serif',
   },
 });
 const DEFAULT_SETTINGS = Object.freeze({
@@ -112,6 +129,13 @@ const DEVIL_PAIR_HEM_RADIUS = 42;
 const DEVIL_PAIR_HEM_BLEED = 3;
 const DEVIL_PAIR_HEM_CLEANUP = 2;
 const DEVIL_PAIR_SPRITE_URL = new URL('./assets/devil-pair-sprite.png', import.meta.url).href;
+const CHARACTER_SELECTION_SCALE = Object.freeze({
+  1: 1,
+  2: 0.92,
+  3: 0.84,
+});
+const CHARACTER_COLLISION_ITERATIONS = 4;
+const CHARACTER_COLLISION_RETARGET_THRESHOLD = 6;
 
 const DEFAULT_BOOK_TEXT_SOURCE = [
   '汚れつちまつた悲しみに',
@@ -139,8 +163,8 @@ let W = 0;
 let H = 0;
 let dpr = 1;
 let panel = null;
-let character = null;
-let selectedCharacter = 'fish';
+let characterGroup = null;
+let selectedCharacterIds = ['fish'];
 let motionBounds = null;
 let backdropTexture = null;
 let paperTexture = null;
@@ -207,6 +231,34 @@ function normalize(vectorX, vectorY) {
   return {
     x: vectorX / length,
     y: vectorY / length,
+  };
+}
+
+function getCollisionNodesCenter(nodes) {
+  if (!Array.isArray(nodes) || !nodes.length) {
+    return { x: 0, y: 0 };
+  }
+
+  let sumX = 0;
+  let sumY = 0;
+  let count = 0;
+
+  for (const node of nodes) {
+    if (!node || !Number.isFinite(node.x) || !Number.isFinite(node.y)) {
+      continue;
+    }
+    sumX += node.x;
+    sumY += node.y;
+    count += 1;
+  }
+
+  if (!count) {
+    return { x: 0, y: 0 };
+  }
+
+  return {
+    x: sumX / count,
+    y: sumY / count,
   };
 }
 
@@ -1884,7 +1936,8 @@ function traceSmoothLine(context, points) {
 }
 
 function createFont(fontSize) {
-  return `300 ${fontSize}px ${getFontStack()}`;
+  const fontOption = getFontOption();
+  return `${fontOption.weight || 300} ${fontSize}px ${fontOption.stack}`;
 }
 
 function getLineHeight(fontSize) {
@@ -2242,6 +2295,82 @@ function createPaperTexture(width, height) {
   return offscreen;
 }
 
+function getSelectedCharacterIds() {
+  return CHARACTER_ORDER.filter((id) => {
+    const input = document.querySelector(`input[name="character"][value="${id}"]`);
+    return Boolean(input?.checked);
+  });
+}
+
+function estimateMetricsBlockedSlots(metrics, cellWidth, lineHeight, padding) {
+  if (!metrics) {
+    return 0;
+  }
+
+  const cellArea = Math.max(1, cellWidth * lineHeight);
+  const paddedLength = metrics.bodyLength + padding * 2.5;
+  const paddedWidth = metrics.maxHalfWidth * 2 + padding * 2.25;
+  const bodyArea = paddedLength * paddedWidth * 0.9;
+  return Math.ceil((bodyArea / cellArea) * 1.46);
+}
+
+function attachMetricsContract(metrics) {
+  if (!metrics || typeof metrics !== 'object') {
+    return metrics;
+  }
+
+  const originalGetMotionInsets =
+    typeof metrics.getMotionInsets === 'function'
+      ? metrics.getMotionInsets.bind(metrics)
+      : null;
+
+  metrics.getMotionInsets = () => {
+    if (originalGetMotionInsets) {
+      return { ...originalGetMotionInsets() };
+    }
+
+    if (metrics.motionInsets) {
+      return { ...metrics.motionInsets };
+    }
+
+    return {
+      left: (metrics.headLength || metrics.bodyLength * 0.2) * 0.72,
+      right: (metrics.headLength || metrics.bodyLength * 0.2) * 0.72,
+      top: metrics.maxHalfWidth * 1.35,
+      bottom: metrics.maxHalfWidth * 1.35,
+    };
+  };
+
+  if (typeof metrics.estimateBlockedSlots !== 'function') {
+    metrics.estimateBlockedSlots = (cellWidth, lineHeight, padding) =>
+      estimateMetricsBlockedSlots(metrics, cellWidth, lineHeight, padding);
+  }
+
+  return metrics;
+}
+
+function cloneAndScaleNumbers(value, scale) {
+  if (typeof value === 'number') {
+    return value * scale;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => cloneAndScaleNumbers(entry, scale));
+  }
+
+  if (value && typeof value === 'object') {
+    const clone = {};
+
+    for (const [key, entry] of Object.entries(value)) {
+      clone[key] = typeof entry === 'function' ? entry : cloneAndScaleNumbers(entry, scale);
+    }
+
+    return clone;
+  }
+
+  return value;
+}
+
 function createFishMetrics(panelLayout) {
   const minDim = Math.min(panelLayout.innerWidth, panelLayout.innerHeight);
   const segmentSpacing = clamp(minDim * 0.09, 20, 34);
@@ -2257,7 +2386,7 @@ function createFishMetrics(panelLayout) {
   const headLength = clamp(minDim * 0.18, 54, 74);
   const tailLength = clamp(minDim * 0.12, 28, 42);
 
-  return {
+  return attachMetricsContract({
     segmentCount: halfWidths.length,
     segmentSpacing,
     halfWidths,
@@ -2280,7 +2409,7 @@ function createFishMetrics(panelLayout) {
       top: Math.max(...halfWidths) * 1.35,
       bottom: Math.max(...halfWidths) * 1.35,
     },
-  };
+  });
 }
 
 function createSproutMetrics(panelLayout) {
@@ -2316,7 +2445,7 @@ function createSproutMetrics(panelLayout) {
     legSpread + footSize + stemWidth * 0.22
   );
 
-  return {
+  return attachMetricsContract({
     stemHeight,
     stemWidth,
     bodyCurve,
@@ -2358,7 +2487,7 @@ function createSproutMetrics(panelLayout) {
       top: stemHeight + topBeanRy * 1.45,
       bottom: legLength + footSize * 1.1,
     },
-  };
+  });
 }
 
 function estimateBlockedSlots(metrics, cellWidth, lineHeight, obstacleClearance, layoutCharacter = null) {
@@ -2377,11 +2506,7 @@ function estimateBlockedSlots(metrics, cellWidth, lineHeight, obstacleClearance,
     return Math.max(0, Math.round(override));
   }
 
-  const cellArea = Math.max(1, cellWidth * lineHeight);
-  const paddedLength = metrics.bodyLength + padding * 2.5;
-  const paddedWidth = metrics.maxHalfWidth * 2 + padding * 2.25;
-  const bodyArea = paddedLength * paddedWidth * 0.9;
-  return Math.ceil((bodyArea / cellArea) * 1.46);
+  return estimateMetricsBlockedSlots(metrics, cellWidth, lineHeight, padding);
 }
 
 function getSampleCellWidth() {
@@ -2517,18 +2642,10 @@ function buildPanel() {
     }
   }
 
-  const fishMetrics = createFishMetrics(panelRect);
-  const sproutMetrics = createSproutMetrics(panelRect);
-  const devilMetrics = createDevilMetrics(panelRect);
-  const activeMetrics = selectedCharacter === 'devil'
-    ? devilMetrics
-    : selectedCharacter === 'sprout'
-      ? sproutMetrics
-      : fishMetrics;
-  const blockedSlots = estimateBlockedSlots(activeMetrics, cellWidth, lineHeight, textObstacleClearance);
-  const spareSlots = Math.max(12, Math.round(slots.length * 0.06));
-  const visibleTarget = Math.min(TARGET_VISIBLE_CHARS, Math.max(120, slots.length - blockedSlots - spareSlots));
-  const textContent = buildSourceLines(bookTextSource, visibleTarget);
+  const baseMetricsById = CHARACTER_ORDER.reduce((metricsMap, id) => {
+    metricsMap[id] = CHARACTER_REGISTRY[id].createBaseMetrics(panelRect);
+    return metricsMap;
+  }, {});
   const rowCenters = Array.from({ length: rows }, (_, row) => offsetY + row * lineHeight + lineHeight * 0.5);
 
   return {
@@ -2541,14 +2658,35 @@ function buildPanel() {
     rows,
     slots,
     rowCenters,
-    fishMetrics,
-    sproutMetrics,
-    devilMetrics,
-    activeMetrics,
-    blockedSlots,
-    spareSlots,
+    baseMetricsById,
+    blockedSlots: 0,
+    spareSlots: 0,
     motionEdgeClearance,
     textObstacleClearance,
+    visibleTarget: TARGET_VISIBLE_CHARS,
+    textLines: [],
+    textGlyphCount: 0,
+  };
+}
+
+function populatePanelTextContent(layout, layoutCharacter) {
+  const blockedEstimate =
+    layoutCharacter && typeof layoutCharacter.estimateBlockedSlots === 'function'
+      ? layoutCharacter.estimateBlockedSlots(layout.cellWidth, layout.lineHeight, layout.textObstacleClearance)
+      : 0;
+  const spareSlots = Math.max(12, Math.round(layout.slots.length * 0.06));
+  const maxBlockedSlots = Math.max(0, layout.slots.length - spareSlots - MIN_VISIBLE_CHARS);
+  const blockedSlots = clamp(Math.round(blockedEstimate || 0), 0, maxBlockedSlots);
+  const visibleTarget = Math.min(
+    TARGET_VISIBLE_CHARS,
+    Math.max(MIN_VISIBLE_CHARS, layout.slots.length - blockedSlots - spareSlots)
+  );
+  const textContent = buildSourceLines(bookTextSource, visibleTarget);
+
+  return {
+    ...layout,
+    blockedSlots,
+    spareSlots,
     visibleTarget,
     textLines: textContent.lines,
     textGlyphCount: textContent.glyphCount,
@@ -2556,20 +2694,15 @@ function buildPanel() {
 }
 
 function getMotionBounds(layout, layoutCharacter = null) {
-  const metrics = layout.activeMetrics;
-  const overrideInsets =
+  const motionInsets =
     (layoutCharacter && typeof layoutCharacter.getMotionInsets === 'function'
       ? layoutCharacter.getMotionInsets()
-      : undefined) ??
-    (metrics && typeof metrics.getMotionInsets === 'function'
-      ? metrics.getMotionInsets()
-      : undefined);
-  const motionInsets = overrideInsets || metrics.motionInsets || {
-    left: (metrics.headLength || metrics.bodyLength * 0.2) * 0.72,
-    right: (metrics.headLength || metrics.bodyLength * 0.2) * 0.72,
-    top: metrics.maxHalfWidth * 1.35,
-    bottom: metrics.maxHalfWidth * 1.35,
-  };
+      : null) || {
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0,
+    };
   return {
     minX: layout.innerX + motionInsets.left + layout.motionEdgeClearance * 0.55,
     maxX: layout.innerX + layout.innerWidth - motionInsets.right - layout.motionEdgeClearance * 0.55,
@@ -2586,30 +2719,106 @@ function createDevilMetrics(panelLayout) {
   const pairWidth = Math.min(preferredWidth, maxWidthFromHeight);
   const geometry = createDevilPairGeometry(pairWidth);
 
-  return {
+  const metrics = {
     ...geometry,
     driftSpeed: clamp(minDim * 0.07, 24, 40),
     hoverAmplitude: clamp(minDim * 0.016, 6, 14),
     hoverSpeed: 0.9,
     swayAmplitude: clamp(minDim * 0.00048, 0.018, 0.038),
+    motionInsets: {
+      left: geometry.pairWidth * 0.56,
+      right: geometry.pairWidth * 0.56,
+      top: geometry.pairHeight * 0.56,
+      bottom: geometry.pairHeight * 0.54,
+    },
 
     getMotionInsets() {
-      return {
-        left: geometry.pairWidth * 0.56,
-        right: geometry.pairWidth * 0.56,
-        top: geometry.pairHeight * 0.56,
-        bottom: geometry.pairHeight * 0.54,
-      };
+      return { ...metrics.motionInsets };
     },
 
     estimateBlockedSlots(cellWidth, lineHeight, padding) {
       const cellArea = Math.max(1, cellWidth * lineHeight);
-      const paddedHeight = geometry.pairHeight + padding * 2.3;
-      const paddedWidth = geometry.pairWidth + padding * 2.1;
+      const paddedHeight = metrics.pairHeight + padding * 2.3;
+      const paddedWidth = metrics.pairWidth + padding * 2.1;
       return Math.ceil(((paddedWidth * paddedHeight * 0.64) / cellArea) * 1.42);
     },
   };
+
+  return attachMetricsContract(metrics);
 }
+
+function scaleFishMetrics(baseMetrics, scale) {
+  return attachMetricsContract(cloneAndScaleNumbers(baseMetrics, scale));
+}
+
+function scaleSproutMetrics(baseMetrics, scale) {
+  return attachMetricsContract(cloneAndScaleNumbers(baseMetrics, scale));
+}
+
+function scaleDevilMetrics(baseMetrics, scale) {
+  const scaled = attachMetricsContract(cloneAndScaleNumbers(baseMetrics, scale));
+  scaled.motionInsets = {
+    left: scaled.pairWidth * 0.56,
+    right: scaled.pairWidth * 0.56,
+    top: scaled.pairHeight * 0.56,
+    bottom: scaled.pairHeight * 0.54,
+  };
+  scaled.getMotionInsets = () => ({ ...scaled.motionInsets });
+  scaled.estimateBlockedSlots = (cellWidth, lineHeight, padding) => {
+    const cellArea = Math.max(1, cellWidth * lineHeight);
+    const paddedHeight = scaled.pairHeight + padding * 2.3;
+    const paddedWidth = scaled.pairWidth + padding * 2.1;
+    return Math.ceil(((paddedWidth * paddedHeight * 0.64) / cellArea) * 1.42);
+  };
+  return scaled;
+}
+
+function getSelectionScale(count) {
+  return CHARACTER_SELECTION_SCALE[count] ?? clamp(1 - Math.max(0, count - 1) * 0.08, 0.76, 1);
+}
+
+function createScaledMetrics(id, baseMetrics, scale) {
+  const definition = CHARACTER_REGISTRY[id];
+  if (!definition) {
+    return baseMetrics;
+  }
+
+  if (scale === 1) {
+    return baseMetrics;
+  }
+
+  return definition.scaleMetrics(baseMetrics, scale);
+}
+
+const CHARACTER_REGISTRY = Object.freeze({
+  fish: {
+    order: 0,
+    createBaseMetrics: createFishMetrics,
+    scaleMetrics: scaleFishMetrics,
+    createInstance: (metrics, bounds) => new SegmentedFish(metrics, bounds),
+    drawPreview: drawFishPreview,
+  },
+  sprout: {
+    order: 1,
+    createBaseMetrics: createSproutMetrics,
+    scaleMetrics: scaleSproutMetrics,
+    createInstance: (metrics, bounds) => new BeanSproutFairy(metrics, bounds),
+    drawPreview: drawSproutPreview,
+  },
+  devil: {
+    order: 2,
+    createBaseMetrics: createDevilMetrics,
+    scaleMetrics: scaleDevilMetrics,
+    createInstance: (metrics, bounds) => new DevilPair(metrics, bounds),
+    drawPreview: drawDevilPreview,
+  },
+});
+
+const CHARACTER_ORDER = Object.freeze(
+  Object.entries(CHARACTER_REGISTRY)
+    .sort(([, left], [, right]) => left.order - right.order)
+    .map(([id]) => id)
+);
 
 class ParticlePool {
   constructor(capacity) {
@@ -3145,6 +3354,72 @@ class SegmentedFish {
     return pointInTriangle(px, py, tailTop.x, tailTop.y, tailTip.x, tailTip.y, tailBottom.x, tailBottom.y);
   }
 
+  getCollisionNodes() {
+    if (!this.segments.length) {
+      return [];
+    }
+
+    const rawIndices = [
+      0,
+      Math.floor(this.segments.length * 0.34),
+      Math.floor(this.segments.length * 0.68),
+      this.segments.length - 1,
+    ];
+    const uniqueIndices = [...new Set(rawIndices.map((index) => clamp(index, 0, this.segments.length - 1)))];
+
+    return uniqueIndices.map((index) => {
+      const segment = this.segments[index];
+      const tailBias = index / Math.max(1, this.segments.length - 1);
+      return {
+        x: segment.x,
+        y: segment.y,
+        radius: Math.max(
+          segment.halfWidth * (index === 0 ? 1.02 : 0.94),
+          this.metrics.segmentSpacing * lerp(0.48, 0.34, tailBias)
+        ),
+      };
+    });
+  }
+
+  applyExternalDisplacement(dx, dy) {
+    const nextX = clamp(this.x + dx, this.bounds.minX, this.bounds.maxX);
+    const nextY = clamp(this.y + dy, this.bounds.minY, this.bounds.maxY);
+    const actualDx = nextX - this.x;
+    const actualDy = nextY - this.y;
+
+    if (!actualDx && !actualDy) {
+      return;
+    }
+
+    this.x = nextX;
+    this.y = nextY;
+
+    for (const point of this.history) {
+      point.x += actualDx;
+      point.y += actualDy;
+    }
+
+    for (const segment of this.segments) {
+      segment.x += actualDx;
+      segment.y += actualDy;
+    }
+  }
+
+  requestRetargetAwayFrom(point) {
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      this.pickTarget();
+      return;
+    }
+
+    const away = normalize(this.x - point.x, this.y - point.y);
+    const lateral = { x: -away.y, y: away.x };
+    const distance = clamp(this.metrics.bodyLength * 0.72, this.metrics.segmentSpacing * 4.8, (this.bounds.maxX - this.bounds.minX) * 0.42);
+    const lateralDrift = randomBetween(-this.metrics.segmentSpacing * 2.2, this.metrics.segmentSpacing * 2.2);
+
+    this.targetX = clamp(this.x + away.x * distance + lateral.x * lateralDrift, this.bounds.minX, this.bounds.maxX);
+    this.targetY = clamp(this.y + away.y * distance + lateral.y * lateralDrift, this.bounds.minY, this.bounds.maxY);
+  }
+
   draw(context) {
     if (!this.segments.length) {
       return;
@@ -3475,6 +3750,96 @@ class BeanSproutFairy {
     return false;
   }
 
+  getCollisionNodes() {
+    const m = this.metrics;
+    const topBean = this.toWorldPoint(m.topBeanX * 0.92, m.topBeanY);
+    const bodyCenter = this.toWorldPoint(0, -m.stemHeight * 0.38);
+    const lowerBody = this.toWorldPoint(0, m.legLength * 0.24);
+
+    return [
+      {
+        x: topBean.x,
+        y: topBean.y,
+        radius: Math.max(m.topBeanRx, m.topBeanRy) * 0.92,
+      },
+      {
+        x: bodyCenter.x,
+        y: bodyCenter.y,
+        radius: Math.max(
+          m.sideBeanOffsetX * 0.52 + m.sideBeanRx * 0.74,
+          m.armLength * 0.78,
+          m.stemWidth * 1.2
+        ),
+      },
+      {
+        x: lowerBody.x,
+        y: lowerBody.y,
+        radius: Math.max(m.legSpread + m.footSize * 0.92, m.stemWidth * 1.05),
+      },
+    ];
+  }
+
+  applyExternalDisplacement(dx, dy) {
+    const nextX = clamp(this.x + dx, this.bounds.minX, this.bounds.maxX);
+    const nextY = clamp(this.y + dy, this.bounds.minY, this.bounds.maxY);
+    const actualDx = nextX - this.x;
+    const actualDy = nextY - this.y;
+
+    if (!actualDx && !actualDy) {
+      return;
+    }
+
+    this.x = nextX;
+    this.y = nextY;
+    this.displayY += actualDy;
+    this.hopStartX += actualDx;
+    this.hopStartY += actualDy;
+    this.hopEndX = clamp(this.hopEndX + actualDx, this.bounds.minX, this.bounds.maxX);
+    this.hopEndY = clamp(this.hopEndY + actualDy, this.bounds.minY, this.bounds.maxY);
+    this.targetX = clamp(this.targetX + actualDx, this.bounds.minX, this.bounds.maxX);
+    this.targetY = clamp(this.targetY + actualDy, this.bounds.minY, this.bounds.maxY);
+  }
+
+  requestRetargetAwayFrom(point) {
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      this.pickTarget();
+      return;
+    }
+
+    const away = normalize(this.x - point.x, this.y - point.y);
+    const lateral = { x: -away.y, y: away.x };
+    const distance = clamp(
+      this.metrics.hopStride * randomBetween(0.78, 1.02),
+      this.metrics.minHopStride,
+      this.metrics.hopStride
+    );
+    const lateralOffset = randomBetween(
+      -this.metrics.maxLateralDrift * 0.65,
+      this.metrics.maxLateralDrift * 0.65
+    );
+    const nextTargetX = clamp(
+      this.x + away.x * distance + lateral.x * lateralOffset,
+      this.bounds.minX,
+      this.bounds.maxX
+    );
+    const nextTargetY = clamp(
+      this.y + away.y * distance * 1.08 + lateral.y * lateralOffset * 0.72,
+      this.bounds.minY,
+      this.bounds.maxY
+    );
+
+    this.targetX = nextTargetX;
+    this.targetY = nextTargetY;
+
+    if (this.hopProgress < 0.72) {
+      this.hopEndX = clamp(lerp(this.hopEndX, nextTargetX, 0.58), this.bounds.minX, this.bounds.maxX);
+      this.hopEndY = clamp(lerp(this.hopEndY, nextTargetY, 0.58), this.bounds.minY, this.bounds.maxY);
+      if (Math.abs(this.hopEndX - this.x) > 1.5) {
+        this.facing = this.hopEndX >= this.x ? 1 : -1;
+      }
+    }
+  }
+
   draw(context) {
     context.save();
     context.translate(this.x, this.displayY);
@@ -3615,6 +3980,35 @@ class DevilWanderer {
     this.updateFacing();
   }
 
+  retargetAwayFrom(point) {
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      this.pickTarget();
+      return;
+    }
+
+    const away = normalize(this.x - point.x, this.y - point.y);
+    const lateral = { x: -away.y, y: away.x };
+    const distance = clamp(
+      this.metrics.shoulderWidth * randomBetween(2.8, 4.4),
+      this.metrics.shoulderWidth * 2,
+      (this.bounds.maxX - this.bounds.minX) * 0.34
+    );
+    const lateralOffset = randomBetween(-this.metrics.shoulderWidth * 0.65, this.metrics.shoulderWidth * 0.65);
+
+    this.targetX = clamp(
+      this.x + away.x * distance + lateral.x * lateralOffset,
+      this.bounds.minX,
+      this.bounds.maxX
+    );
+    this.targetY = clamp(
+      this.y + away.y * distance * 0.88 + lateral.y * lateralOffset * 0.5,
+      this.bounds.minY,
+      this.bounds.maxY
+    );
+    this.vx += away.x * this.metrics.driftSpeed * 0.24;
+    this.vy += away.y * this.metrics.driftSpeed * 0.18;
+  }
+
   draw(context) {
     context.save();
     context.translate(this.x, this.displayY);
@@ -3706,6 +4100,15 @@ class DevilPair {
     };
   }
 
+  toWorldPoint(localX, localY) {
+    const cos = Math.cos(this.anchor.swayAngle);
+    const sin = Math.sin(this.anchor.swayAngle);
+    return {
+      x: this.anchor.x + localX * cos - localY * sin,
+      y: this.anchor.displayY + localX * sin + localY * cos,
+    };
+  }
+
   update(dt, timestamp) {
     this.anchor.update(dt, timestamp);
     this.anchor.facing = 1;
@@ -3740,26 +4143,316 @@ class DevilPair {
     const local = this.toLocalPoint(px, py);
     return devilPairContainsLocalPoint(local.x, local.y, this.metrics, padding);
   }
+
+  getCollisionNodes() {
+    const nodes = [];
+    const leftHead = this.metrics.headRegions?.[0];
+    const rightHead = this.metrics.headRegions?.[1];
+    const lowerBody = this.toWorldPoint(0, this.metrics.pairHeight * 0.16);
+
+    if (leftHead) {
+      const point = this.toWorldPoint(leftHead.x, leftHead.y);
+      nodes.push({
+        x: point.x,
+        y: point.y,
+        radius: Math.max(leftHead.rx, leftHead.ry) * 0.76,
+      });
+    }
+
+    if (rightHead) {
+      const point = this.toWorldPoint(rightHead.x, rightHead.y);
+      nodes.push({
+        x: point.x,
+        y: point.y,
+        radius: Math.max(rightHead.rx, rightHead.ry) * 0.76,
+      });
+    }
+
+    nodes.push({
+      x: lowerBody.x,
+      y: lowerBody.y,
+      radius: Math.max(this.metrics.pairWidth * 0.16, this.metrics.torsoHeight * 0.38),
+    });
+
+    return nodes;
+  }
+
+  applyExternalDisplacement(dx, dy) {
+    const nextX = clamp(this.anchor.x + dx, this.bounds.minX, this.bounds.maxX);
+    const nextY = clamp(this.anchor.y + dy, this.bounds.minY, this.bounds.maxY);
+    const actualDx = nextX - this.anchor.x;
+    const actualDy = nextY - this.anchor.y;
+
+    if (!actualDx && !actualDy) {
+      return;
+    }
+
+    this.anchor.x = nextX;
+    this.anchor.y = nextY;
+    this.anchor.displayY += actualDy;
+    this.anchor.targetX = clamp(this.anchor.targetX + actualDx, this.bounds.minX, this.bounds.maxX);
+    this.anchor.targetY = clamp(this.anchor.targetY + actualDy, this.bounds.minY, this.bounds.maxY);
+  }
+
+  requestRetargetAwayFrom(point) {
+    this.anchor.retargetAwayFrom(point);
+  }
+}
+
+class NullCharacterGroup {
+  update() {}
+
+  draw() {}
+
+  emitParticles() {}
+
+  contains() {
+    return false;
+  }
+
+  estimateBlockedSlots() {
+    return 0;
+  }
+
+  getMotionInsets() {
+    return {
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0,
+    };
+  }
+
+  getBlockedRangesAtRow() {
+    return [];
+  }
+}
+
+class CharacterGroup {
+  constructor(entries, bounds = null) {
+    this.entries = [...entries].sort((left, right) => left.order - right.order);
+    this.bounds = bounds;
+  }
+
+  update(dt, timestamp) {
+    for (const entry of this.entries) {
+      entry.instance?.update(dt, timestamp);
+    }
+
+    this.resolveCollisions();
+  }
+
+  draw(context) {
+    for (const entry of this.entries) {
+      entry.instance?.draw(context);
+    }
+  }
+
+  emitParticles(particleSystemRef, dt) {
+    for (const entry of this.entries) {
+      entry.instance?.emitParticles(particleSystemRef, dt);
+    }
+  }
+
+  contains(x, y, padding = 0) {
+    return this.entries.some((entry) => entry.instance?.contains(x, y, padding));
+  }
+
+  estimateBlockedSlots(cellWidth, lineHeight, padding) {
+    return this.entries.reduce((sum, entry) => {
+      const value =
+        (entry.instance && typeof entry.instance.estimateBlockedSlots === 'function'
+          ? entry.instance.estimateBlockedSlots(cellWidth, lineHeight, padding)
+          : undefined) ??
+        (entry.metrics && typeof entry.metrics.estimateBlockedSlots === 'function'
+          ? entry.metrics.estimateBlockedSlots(cellWidth, lineHeight, padding)
+          : 0);
+      return sum + (Number.isFinite(value) ? value : 0);
+    }, 0);
+  }
+
+  getMotionInsets() {
+    if (!this.entries.length) {
+      return {
+        left: 0,
+        right: 0,
+        top: 0,
+        bottom: 0,
+      };
+    }
+
+    const insetsList = this.entries.map((entry) => entry.metrics.getMotionInsets());
+    return {
+      left: Math.max(...insetsList.map((insets) => insets.left), 0),
+      right: Math.max(...insetsList.map((insets) => insets.right), 0),
+      top: Math.max(...insetsList.map((insets) => insets.top), 0),
+      bottom: Math.max(...insetsList.map((insets) => insets.bottom), 0),
+    };
+  }
+
+  getBlockedRangesAtRow(rowY, inflate, rowBounds) {
+    const ranges = [];
+    let hasOverride = false;
+
+    for (const entry of this.entries) {
+      const entryRanges = entry.instance?.getBlockedRangesAtRow?.(rowY, inflate, rowBounds);
+      if (Array.isArray(entryRanges)) {
+        ranges.push(...entryRanges);
+        hasOverride = true;
+      }
+    }
+
+    return hasOverride ? ranges : undefined;
+  }
+
+  resolveCollisions() {
+    if (this.entries.length < 2) {
+      return;
+    }
+
+    const retargetRequests = new Map();
+
+    for (let iteration = 0; iteration < CHARACTER_COLLISION_ITERATIONS; iteration += 1) {
+      let hadCollision = false;
+
+      for (let leftIndex = 0; leftIndex < this.entries.length - 1; leftIndex += 1) {
+        for (let rightIndex = leftIndex + 1; rightIndex < this.entries.length; rightIndex += 1) {
+          const result = this.resolvePairCollision(this.entries[leftIndex], this.entries[rightIndex]);
+          if (result.overlap > 0.01) {
+            hadCollision = true;
+          }
+
+          if (result.overlap > CHARACTER_COLLISION_RETARGET_THRESHOLD && result.awayPoint) {
+            retargetRequests.set(result.retargetEntry.id, {
+              entry: result.retargetEntry,
+              point: result.awayPoint,
+            });
+          }
+        }
+      }
+
+      if (!hadCollision) {
+        break;
+      }
+    }
+
+    for (const request of retargetRequests.values()) {
+      request.entry.instance?.requestRetargetAwayFrom?.(request.point);
+    }
+  }
+
+  resolvePairCollision(leftEntry, rightEntry) {
+    const leftNodes = leftEntry.instance?.getCollisionNodes?.() || [];
+    const rightNodes = rightEntry.instance?.getCollisionNodes?.() || [];
+
+    if (!leftNodes.length || !rightNodes.length) {
+      return { overlap: 0 };
+    }
+
+    const leftCenter = getCollisionNodesCenter(leftNodes);
+    const rightCenter = getCollisionNodesCenter(rightNodes);
+    let maxOverlap = 0;
+    let sumOverlap = 0;
+    let sumX = 0;
+    let sumY = 0;
+    let collisionCount = 0;
+
+    for (const leftNode of leftNodes) {
+      for (const rightNode of rightNodes) {
+        const dx = rightNode.x - leftNode.x;
+        const dy = rightNode.y - leftNode.y;
+        const minDistance = (leftNode.radius || 0) + (rightNode.radius || 0);
+        const distanceBetween = Math.hypot(dx, dy);
+        const overlap = minDistance - distanceBetween;
+
+        if (overlap <= 0) {
+          continue;
+        }
+
+        collisionCount += 1;
+        maxOverlap = Math.max(maxOverlap, overlap);
+        sumOverlap += overlap;
+
+        const axis =
+          distanceBetween > 0.001
+            ? { x: dx / distanceBetween, y: dy / distanceBetween }
+            : normalize(
+              (rightCenter.x - leftCenter.x) || rightEntry.order - leftEntry.order || 1,
+              rightCenter.y - leftCenter.y
+            );
+
+        sumX += axis.x * overlap;
+        sumY += axis.y * overlap;
+      }
+    }
+
+    if (!collisionCount) {
+      return { overlap: 0 };
+    }
+
+    const axisMagnitude = Math.hypot(sumX, sumY);
+    const axis =
+      axisMagnitude > 0.001
+        ? { x: sumX / axisMagnitude, y: sumY / axisMagnitude }
+        : normalize(
+          (rightCenter.x - leftCenter.x) || rightEntry.order - leftEntry.order || 1,
+          rightCenter.y - leftCenter.y
+        );
+    const pushDistance = Math.max(0.18, (sumOverlap / collisionCount) * 0.52);
+    const pushX = axis.x * pushDistance;
+    const pushY = axis.y * pushDistance;
+
+    leftEntry.instance?.applyExternalDisplacement?.(-pushX, -pushY);
+    rightEntry.instance?.applyExternalDisplacement?.(pushX, pushY);
+
+    return {
+      overlap: maxOverlap,
+      retargetEntry: rightEntry,
+      awayPoint: leftCenter,
+    };
+  }
 }
 
 function createCharacter(type, panelLayout, bounds) {
-  if (type === 'devil') {
-    const metrics = panelLayout.devilMetrics || createDevilMetrics(panelLayout);
-    return new DevilPair(metrics, bounds);
+  const definition = CHARACTER_REGISTRY[type] || CHARACTER_REGISTRY.fish;
+  const baseMetrics = panelLayout.baseMetricsById?.[type] || definition.createBaseMetrics(panelLayout);
+  const metrics = createScaledMetrics(type, baseMetrics, 1);
+  return definition.createInstance(metrics, bounds);
+}
+
+function createCharacterGroup(selectedIds, panelLayout, bounds, options = {}) {
+  if (!selectedIds.length) {
+    return new NullCharacterGroup();
   }
-  if (type === 'sprout') {
-    return new BeanSproutFairy(panelLayout.sproutMetrics || createSproutMetrics(panelLayout), bounds);
-  }
-  return new SegmentedFish(panelLayout.fishMetrics, bounds);
+
+  const shouldInstantiate = options.instantiate ?? Boolean(bounds);
+  const scale = getSelectionScale(selectedIds.length);
+  const entries = selectedIds.map((id) => {
+    const definition = CHARACTER_REGISTRY[id];
+    const baseMetrics = panelLayout.baseMetricsById?.[id] || definition.createBaseMetrics(panelLayout);
+    const metrics = createScaledMetrics(id, baseMetrics, scale);
+    const instance = shouldInstantiate ? definition.createInstance(metrics, bounds) : null;
+
+    return {
+      id,
+      order: definition.order,
+      metrics,
+      instance,
+    };
+  });
+
+  return new CharacterGroup(entries, bounds);
 }
 
 function rebuildScene() {
   resizeCanvas();
   panel = buildPanel();
-  motionBounds = getMotionBounds(panel);
+  const layoutCharacterGroup = createCharacterGroup(selectedCharacterIds, panel, null, { instantiate: false });
+  motionBounds = getMotionBounds(panel, layoutCharacterGroup);
   backdropTexture = createBackdropTexture(W, H);
   paperTexture = createPaperTexture(panel.width, panel.height);
-  character = createCharacter(selectedCharacter, panel, motionBounds);
+  characterGroup = createCharacterGroup(selectedCharacterIds, panel, motionBounds);
+  panel = populatePanelTextContent(panel, characterGroup);
   particleSystem = new ParticleSystem(256);
   syncBackButtonPosition();
   flowTargets = [];
@@ -3769,7 +4462,7 @@ function rebuildScene() {
 }
 
 function renderIntroFrame() {
-  if (!panel || !character) {
+  if (!panel || !characterGroup) {
     return;
   }
 
@@ -3782,7 +4475,7 @@ function renderIntroFrame() {
   ctx.save();
   parchmentPath(ctx, panel);
   ctx.clip();
-  character.draw(ctx);
+  characterGroup.draw(ctx);
   ctx.restore();
 }
 
@@ -3947,7 +4640,7 @@ function markBlockedFlagsFromRange(blockedFlags, rowSlots, range) {
 }
 
 function buildBlockedFlagsForRow(rowSlots, inflate) {
-  if (!rowSlots.length || !character) {
+  if (!rowSlots.length || !characterGroup) {
     return [];
   }
 
@@ -3960,8 +4653,8 @@ function buildBlockedFlagsForRow(rowSlots, inflate) {
     slots: rowSlots,
   };
   const overrideRanges =
-    typeof character.getBlockedRangesAtRow === 'function'
-      ? character.getBlockedRangesAtRow(rowY, inflate, rowBounds)
+    typeof characterGroup.getBlockedRangesAtRow === 'function'
+      ? characterGroup.getBlockedRangesAtRow(rowY, inflate, rowBounds)
       : undefined;
 
   if (Array.isArray(overrideRanges)) {
@@ -3972,7 +4665,7 @@ function buildBlockedFlagsForRow(rowSlots, inflate) {
     return blockedFlags;
   }
 
-  return rowSlots.map((slot) => character.contains(slot.x, slot.y, inflate));
+  return rowSlots.map((slot) => characterGroup.contains(slot.x, slot.y, inflate));
 }
 
 function buildBlockedRangesForRow(rowSlots, inflate) {
@@ -4170,7 +4863,7 @@ function allocateSlotsAcrossRanges(availableRanges, take) {
 }
 
 function getFlowTargets() {
-  if (!panel || !character) {
+  if (!panel || !characterGroup) {
     return [];
   }
 
@@ -4231,7 +4924,7 @@ function getFlowTargets() {
 }
 
 function updateTextFlow(timestamp, force = false) {
-  if (!panel || !character) {
+  if (!panel || !characterGroup) {
     return;
   }
 
@@ -4260,16 +4953,16 @@ function drawText() {
 function loop(timestamp) {
   animationFrameId = window.requestAnimationFrame(loop);
 
-  if (!sceneReady || !panel || !character) {
+  if (!sceneReady || !panel || !characterGroup) {
     return;
   }
 
   const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
   lastTime = timestamp;
   updateFps(dt);
-  character.update(dt, timestamp);
+  characterGroup.update(dt, timestamp);
   if (particleSystem) {
-    character.emitParticles(particleSystem, dt);
+    characterGroup.emitParticles(particleSystem, dt);
     particleSystem.update(dt);
   }
   updateTextFlow(timestamp);
@@ -4282,7 +4975,7 @@ function loop(timestamp) {
   ctx.save();
   parchmentPath(ctx, panel);
   ctx.clip();
-  character.draw(ctx);
+  characterGroup.draw(ctx);
   ctx.restore();
 }
 
@@ -4376,7 +5069,7 @@ async function ensureFontLoaded(fontKey = settings.fontFamily) {
 
   await Promise.race([
     Promise.all([
-      document.fonts.load(`300 20px "${fontOption.loadName}"`),
+      document.fonts.load(`${fontOption.weight || 300} 20px "${fontOption.loadName}"`),
       document.fonts.ready,
     ]),
     timeout,
@@ -4453,8 +5146,7 @@ function startExperience() {
   experienceStarted = true;
   setInputModalOpen(false, { restoreFocus: false });
   setConfigModalOpen(false, { restoreFocus: false });
-  const checkedRadio = document.querySelector('input[name="character"]:checked');
-  selectedCharacter = checkedRadio ? checkedRadio.value : 'fish';
+  selectedCharacterIds = getSelectedCharacterIds();
   bookTextSource = normalizeSourceText(textInputEl.value);
   rebuildScene();
   if (bgmAudio) {
@@ -4485,8 +5177,7 @@ function returnToStartScreen() {
   setConfigModalOpen(false, { restoreFocus: false });
   document.body.classList.remove('is-running');
   startScreenEl.classList.remove('is-hidden');
-  const checkedRadio = document.querySelector('input[name="character"]:checked');
-  selectedCharacter = checkedRadio ? checkedRadio.value : selectedCharacter;
+  selectedCharacterIds = getSelectedCharacterIds();
   bookTextSource = normalizeSourceText(textInputEl.value);
   rebuildScene();
   renderIntroFrame();
@@ -4605,15 +5296,90 @@ paperColorInputEl.addEventListener('input', () => {
   updateConfigValueLabels();
   previewConfigSettings();
 });
-document.querySelectorAll('input[name="character"]').forEach((radio) => {
-  radio.addEventListener('change', (event) => {
-    if (experienceStarted || !event.target.checked) {
+document.querySelectorAll('input[name="character"]').forEach((input) => {
+  input.addEventListener('change', () => {
+    if (experienceStarted) {
       return;
     }
-    selectedCharacter = event.target.value;
+    selectedCharacterIds = getSelectedCharacterIds();
     refreshScene();
   });
 });
+
+function drawFishPreview(previewCtx, width, height) {
+  previewCtx.save();
+  previewCtx.translate(width * 0.5, height * 0.5);
+  previewCtx.scale(0.55, 0.55);
+
+  previewCtx.beginPath();
+  previewCtx.moveTo(50, 0);
+  previewCtx.quadraticCurveTo(30, -22, -10, -18);
+  previewCtx.quadraticCurveTo(-30, -16, -45, -8);
+  previewCtx.lineTo(-62, -18);
+  previewCtx.lineTo(-55, 0);
+  previewCtx.lineTo(-62, 18);
+  previewCtx.lineTo(-45, 8);
+  previewCtx.quadraticCurveTo(-30, 16, -10, 18);
+  previewCtx.quadraticCurveTo(30, 22, 50, 0);
+  previewCtx.closePath();
+  previewCtx.fillStyle = FISH_FILL;
+  previewCtx.fill();
+  previewCtx.strokeStyle = FISH_STROKE;
+  previewCtx.lineWidth = 1.5;
+  previewCtx.stroke();
+
+  previewCtx.beginPath();
+  previewCtx.moveTo(-5, -16);
+  previewCtx.quadraticCurveTo(-15, -28, -30, -22);
+  previewCtx.strokeStyle = FISH_ACCENT;
+  previewCtx.lineWidth = 2;
+  previewCtx.stroke();
+
+  previewCtx.beginPath();
+  previewCtx.arc(32, -4, 3, 0, Math.PI * 2);
+  previewCtx.fillStyle = FISH_EYE;
+  previewCtx.fill();
+  previewCtx.restore();
+}
+
+function drawSproutPreview(previewCtx, width, height) {
+  previewCtx.save();
+  previewCtx.translate(width * 0.44, height * 0.78);
+  drawSproutFairyFigure(previewCtx, {
+    stemHeight: 48,
+    stemWidth: 8,
+    bodyCurve: 1.4,
+    hookTipX: 11,
+    hookTipY: -40,
+    hookWidth: 7.4,
+    topBeanX: 18,
+    topBeanY: -33,
+    topBeanRx: 10,
+    topBeanRy: 8.1,
+    sideBeanOffsetX: 18,
+    sideBeanOffsetY: 7,
+    sideBeanRx: 7,
+    sideBeanRy: 5.4,
+    armLength: 11,
+    leftArmLength: 9,
+    armWidth: 1.7,
+    handSize: 2.3,
+    legLength: 8,
+    legSpread: 3.8,
+    legWidth: 2.1,
+    footSize: 3.1,
+  }, { walkPhase: 0.6 });
+  previewCtx.restore();
+}
+
+function drawDevilPreview(previewCtx, width, height) {
+  const previewWidth = Math.min(width * 0.82, height * DEVIL_PAIR_ASPECT * 0.9);
+  const previewMetrics = createDevilPairGeometry(previewWidth);
+  previewCtx.save();
+  previewCtx.translate(width * 0.5, height * 0.52);
+  drawDevilPairSprite(previewCtx, previewMetrics, { alpha: 0.95, breathPhase: 0.9 });
+  previewCtx.restore();
+}
 
 function drawCharacterPreviews() {
   document.querySelectorAll('.character-preview').forEach((cvs) => {
@@ -4621,79 +5387,12 @@ function drawCharacterPreviews() {
     const w = cvs.width;
     const h = cvs.height;
     const type = cvs.dataset.character;
+    const definition = CHARACTER_REGISTRY[type];
 
     previewCtx.clearRect(0, 0, w, h);
 
-    if (type === 'fish') {
-      previewCtx.save();
-      previewCtx.translate(w * 0.5, h * 0.5);
-      previewCtx.scale(0.55, 0.55);
-
-      previewCtx.beginPath();
-      previewCtx.moveTo(50, 0);
-      previewCtx.quadraticCurveTo(30, -22, -10, -18);
-      previewCtx.quadraticCurveTo(-30, -16, -45, -8);
-      previewCtx.lineTo(-62, -18);
-      previewCtx.lineTo(-55, 0);
-      previewCtx.lineTo(-62, 18);
-      previewCtx.lineTo(-45, 8);
-      previewCtx.quadraticCurveTo(-30, 16, -10, 18);
-      previewCtx.quadraticCurveTo(30, 22, 50, 0);
-      previewCtx.closePath();
-      previewCtx.fillStyle = FISH_FILL;
-      previewCtx.fill();
-      previewCtx.strokeStyle = FISH_STROKE;
-      previewCtx.lineWidth = 1.5;
-      previewCtx.stroke();
-
-      previewCtx.beginPath();
-      previewCtx.moveTo(-5, -16);
-      previewCtx.quadraticCurveTo(-15, -28, -30, -22);
-      previewCtx.strokeStyle = FISH_ACCENT;
-      previewCtx.lineWidth = 2;
-      previewCtx.stroke();
-
-      previewCtx.beginPath();
-      previewCtx.arc(32, -4, 3, 0, Math.PI * 2);
-      previewCtx.fillStyle = FISH_EYE;
-      previewCtx.fill();
-
-      previewCtx.restore();
-    } else if (type === 'sprout') {
-      previewCtx.save();
-      previewCtx.translate(w * 0.44, h * 0.78);
-      drawSproutFairyFigure(previewCtx, {
-        stemHeight: 48,
-        stemWidth: 8,
-        bodyCurve: 1.4,
-        hookTipX: 11,
-        hookTipY: -40,
-        hookWidth: 7.4,
-        topBeanX: 18,
-        topBeanY: -33,
-        topBeanRx: 10,
-        topBeanRy: 8.1,
-        sideBeanOffsetX: 18,
-        sideBeanOffsetY: 7,
-        sideBeanRx: 7,
-        sideBeanRy: 5.4,
-        armLength: 11,
-        leftArmLength: 9,
-        armWidth: 1.7,
-        handSize: 2.3,
-        legLength: 8,
-        legSpread: 3.8,
-        legWidth: 2.1,
-        footSize: 3.1,
-      }, { walkPhase: 0.6 });
-      previewCtx.restore();
-    } else if (type === 'devil') {
-      const previewWidth = Math.min(w * 0.82, h * DEVIL_PAIR_ASPECT * 0.9);
-      const pm = createDevilPairGeometry(previewWidth);
-      previewCtx.save();
-      previewCtx.translate(w * 0.5, h * 0.52);
-      drawDevilPairSprite(previewCtx, pm, { alpha: 0.95, breathPhase: 0.9 });
-      previewCtx.restore();
+    if (definition?.drawPreview) {
+      definition.drawPreview(previewCtx, w, h);
     }
   });
 }
@@ -4701,8 +5400,7 @@ function drawCharacterPreviews() {
 (async () => {
   populateConfigForm(settings);
   syncCssSettings();
-  const checkedRadio = document.querySelector('input[name="character"]:checked');
-  selectedCharacter = checkedRadio ? checkedRadio.value : selectedCharacter;
+  selectedCharacterIds = getSelectedCharacterIds();
   await Promise.all([
     ensureFontLoaded(settings.fontFamily),
     ensureDevilPairSpriteLoaded(),

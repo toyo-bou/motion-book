@@ -13,10 +13,10 @@
   <link
     rel="preload"
     as="style"
-    href="https://fonts.googleapis.com/css2?family=Kiwi+Maru:wght@300;400&family=M+PLUS+1+Code:wght@300;400&family=Shippori+Mincho:wght@400;500&display=block"
+    href="https://fonts.googleapis.com/css2?family=Hachi+Maru+Pop&family=Kiwi+Maru:wght@300;400&family=M+PLUS+1+Code:wght@300;400&family=Shippori+Mincho:wght@400;500&family=Yuji+Boku&display=block"
   />
   <link
-    href="https://fonts.googleapis.com/css2?family=Kiwi+Maru:wght@300;400&family=M+PLUS+1+Code:wght@300;400&family=Shippori+Mincho:wght@400;500&display=block"
+    href="https://fonts.googleapis.com/css2?family=Hachi+Maru+Pop&family=Kiwi+Maru:wght@300;400&family=M+PLUS+1+Code:wght@300;400&family=Shippori+Mincho:wght@400;500&family=Yuji+Boku&display=block"
     rel="stylesheet"
   />
   <link rel="stylesheet" href="/style.css" />
@@ -35,22 +35,25 @@
         <p class="character-select-label">キャラクターを選ぶ</p>
         <div class="character-select-options">
           <label class="character-option">
-            <input type="radio" name="character" value="fish" checked />
+            <input type="checkbox" name="character" value="fish" checked />
             <span class="character-option-card">
+              <span class="character-option-check" aria-hidden="true">✔</span>
               <canvas class="character-preview" data-character="fish" width="120" height="80"></canvas>
               <span class="character-option-name">古代魚</span>
             </span>
           </label>
           <label class="character-option">
-            <input type="radio" name="character" value="sprout" />
+            <input type="checkbox" name="character" value="sprout" />
             <span class="character-option-card">
+              <span class="character-option-check" aria-hidden="true">✔</span>
               <canvas class="character-preview" data-character="sprout" width="120" height="80"></canvas>
               <span class="character-option-name">モヤシの妖精</span>
             </span>
           </label>
           <label class="character-option">
-            <input type="radio" name="character" value="devil" />
+            <input type="checkbox" name="character" value="devil" />
             <span class="character-option-card">
+              <span class="character-option-check" aria-hidden="true">✔</span>
               <canvas class="character-preview" data-character="devil" width="120" height="80"></canvas>
               <span class="character-option-name">悪魔</span>
             </span>
@@ -171,9 +174,11 @@
             </span>
             <select id="font-family-input" class="config-select">
               <option value="kiwi-maru">Kiwi Maru</option>
+              <option value="hachi-maru-pop">Hachi Maru Pop（丸文字手書き）</option>
               <option value="yu-gothic">Yu Gothic</option>
               <option value="m-plus-code">M PLUS 1 Code</option>
               <option value="shippori-mincho">Shippori Mincho</option>
+              <option value="yuji-boku">Yuji Boku（まがまがしい手書き）</option>
             </select>
           </label>
           <label class="config-field" for="text-interval-input">

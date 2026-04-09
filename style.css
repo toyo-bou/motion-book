@@ -198,13 +198,14 @@ body.is-running #back-button {
 .character-select-options {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .character-option {
   cursor: pointer;
 }
 
-.character-option input[type="radio"] {
+.character-option input[type="checkbox"] {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -213,6 +214,7 @@ body.is-running #back-button {
 }
 
 .character-option-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -224,12 +226,36 @@ body.is-running #back-button {
   transition: border-color 180ms ease, background-color 180ms ease;
 }
 
-.character-option input[type="radio"]:checked + .character-option-card {
+.character-option-check {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(196, 122, 138, 0.12);
+  color: rgba(120, 74, 88, 0.26);
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity 180ms ease, background-color 180ms ease, color 180ms ease, transform 180ms ease;
+}
+
+.character-option input[type="checkbox"]:checked + .character-option-card {
   border-color: var(--accent-rose);
   background: rgba(248, 243, 237, 0.85);
 }
 
-.character-option input[type="radio"]:focus-visible + .character-option-card {
+.character-option input[type="checkbox"]:checked + .character-option-card .character-option-check {
+  background: var(--accent-rose);
+  color: #fff7f2;
+  opacity: 1;
+  transform: scale(1.02);
+}
+
+.character-option input[type="checkbox"]:focus-visible + .character-option-card {
   outline: 2px solid rgba(160, 110, 130, 0.24);
   outline-offset: 3px;
 }
