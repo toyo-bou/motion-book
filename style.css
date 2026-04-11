@@ -579,6 +579,63 @@ body.is-running #back-button {
   outline-offset: 3px;
 }
 
+
+
+.config-field-checkbox {
+  cursor: pointer;
+}
+
+.config-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.config-checkbox {
+  appearance: none;
+  width: 44px;
+  min-width: 44px;
+  height: 24px;
+  border: 2px solid rgba(140, 110, 120, 0.28);
+  border-radius: 999px;
+  background: rgba(200, 190, 195, 0.4);
+  cursor: pointer;
+  position: relative;
+  transition: background-color 220ms ease, border-color 220ms ease;
+}
+
+.config-checkbox::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(140, 110, 120, 0.6);
+  transition: transform 220ms ease, background-color 220ms ease;
+}
+
+.config-checkbox:checked {
+  background: rgba(160, 40, 40, 0.72);
+  border-color: rgba(180, 50, 50, 0.6);
+}
+
+.config-checkbox:checked::after {
+  transform: translateX(20px);
+  background: #f8e8e6;
+}
+
+.config-checkbox:focus-visible {
+  outline: 2px solid rgba(160, 110, 130, 0.24);
+  outline-offset: 3px;
+}
+
+.config-checkbox-description {
+  font-size: 13px;
+  color: rgba(82, 66, 76, 0.72);
+  line-height: 1.5;
+}
 .config-actions {
   justify-content: space-between;
 }

@@ -28,6 +28,8 @@ const textIntervalInputEl = document.getElementById('text-interval-input');
 const textIntervalValueEl = document.getElementById('text-interval-value');
 const paperColorInputEl = document.getElementById('paper-color-input');
 const paperColorValueEl = document.getElementById('paper-color-value');
+const bloodModeInputEl = document.getElementById('blood-mode-input');
+const bloodModeValueEl = document.getElementById('blood-mode-value');
 const audioFileInputEl = document.getElementById('audio-file-input');
 const audioFileNameEl = document.getElementById('audio-file-name');
 const audioClearButtonEl = document.getElementById('audio-clear-button');
@@ -98,6 +100,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   fontFamily: 'kiwi-maru',
   textFlowIntervalMs: 100,
   paperColor: '#f0e6da',
+  bloodMode: false,
 });
 const LEGACY_DEFAULT_SETTINGS = Object.freeze({
   ...DEFAULT_SETTINGS,
@@ -186,6 +189,7 @@ let bgmObjectUrl = null;
 let devilPairMeshPatternSource = null;
 let devilPairSpriteImage = null;
 let devilPairSpritePromise = null;
+let bloodSplatterTexture = null;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -2041,6 +2045,7 @@ function sanitizeSettings(candidate = {}) {
       candidate.paperColor ?? candidate.backgroundColor,
       DEFAULT_SETTINGS.paperColor
     ),
+    bloodMode: Boolean(candidate.bloodMode),
   };
 }
 
@@ -2133,6 +2138,7 @@ function updateConfigValueLabels() {
     paperColorInputEl.value,
     DEFAULT_SETTINGS.paperColor
   ).toUpperCase();
+  bloodModeValueEl.textContent = bloodModeInputEl.checked ? 'ON' : 'OFF';
 }
 
 function populateConfigForm(nextSettings = settings) {
@@ -2143,6 +2149,7 @@ function populateConfigForm(nextSettings = settings) {
   fontFamilyInputEl.value = safeSettings.fontFamily;
   textIntervalInputEl.value = String(safeSettings.textFlowIntervalMs);
   paperColorInputEl.value = safeSettings.paperColor;
+  bloodModeInputEl.checked = safeSettings.bloodMode;
   updateConfigValueLabels();
 }
 
@@ -2154,6 +2161,7 @@ function readConfigForm() {
     fontFamily: fontFamilyInputEl.value,
     textFlowIntervalMs: Number(textIntervalInputEl.value),
     paperColor: paperColorInputEl.value,
+    bloodMode: bloodModeInputEl.checked,
   });
 }
 
@@ -4454,6 +4462,7 @@ function rebuildScene() {
   characterGroup = createCharacterGroup(selectedCharacterIds, panel, motionBounds);
   panel = populatePanelTextContent(panel, characterGroup);
   particleSystem = new ParticleSystem(256);
+  bloodSplatterTexture = settings.bloodMode ? createBloodSplatterTexture(panel.width, panel.height) : null;
   syncBackButtonPosition();
   flowTargets = [];
   lastTextFlowUpdate = 0;
@@ -4497,6 +4506,257 @@ function drawBackground() {
   if (backdropTexture) {
     ctx.drawImage(backdropTexture, 0, 0, W, H);
   }
+}
+
+
+function createBloodSplatterTexture(width, height) {
+  const offscreen = document.createElement('canvas');
+  offscreen.width = Math.max(1, Math.floor(width));
+  offscreen.height = Math.max(1, Math.floor(height));
+  const offCtx = offscreen.getContext('2d');
+  const random = createSeededRandom(42);
+  const dim = Math.min(width, height);
+
+  const darkBlood = { r: 38, g: 0, b: 0 };
+  const edgeBlood = { r: 126, g: 8, b: 8 };
+
+  function rgba(color, alpha) {
+    return `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`;
+  }
+
+  function bloodColor(alpha = 0.95, tone = 0) {
+    const r = Math.round(clamp(seededBetween(random, 82, 110) + tone, 48, 128));
+    const g = Math.round(clamp(seededBetween(random, 0, 5) + tone * 0.08, 0, 12));
+    const b = Math.round(clamp(seededBetween(random, 0, 5) + tone * 0.08, 0, 12));
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  function traceSmooth(points) {
+    if (points.length < 2) {
+      return;
+    }
+
+    if (points.length === 2) {
+      offCtx.lineTo(points[1].x, points[1].y);
+      return;
+    }
+
+    for (let i = 1; i < points.length - 1; i += 1) {
+      const point = points[i];
+      const next = points[i + 1];
+      offCtx.quadraticCurveTo(
+        point.x,
+        point.y,
+        (point.x + next.x) * 0.5,
+        (point.y + next.y) * 0.5
+      );
+    }
+
+    const last = points[points.length - 1];
+    offCtx.lineTo(last.x, last.y);
+  }
+
+  function drawClosedShape(leftPoints, rightPoints, fillStyle) {
+    const reversedRight = [...rightPoints].reverse();
+
+    offCtx.beginPath();
+    offCtx.moveTo(leftPoints[0].x, leftPoints[0].y);
+    traceSmooth(leftPoints);
+    offCtx.lineTo(reversedRight[0].x, reversedRight[0].y);
+    traceSmooth(reversedRight);
+    offCtx.closePath();
+    offCtx.fillStyle = fillStyle;
+    offCtx.fill();
+  }
+
+  function strokeCenterline(points, style, lineWidth, alpha = 1) {
+    offCtx.save();
+    offCtx.globalAlpha = alpha;
+    offCtx.strokeStyle = style;
+    offCtx.lineWidth = lineWidth;
+    offCtx.lineCap = 'round';
+    offCtx.lineJoin = 'round';
+    offCtx.beginPath();
+    offCtx.moveTo(points[0].x, points[0].y);
+    traceSmooth(points);
+    offCtx.stroke();
+    offCtx.restore();
+  }
+
+  function drawTerminalDrop(point, widthAtEnd, scale = 1) {
+    const rx = Math.max(widthAtEnd * seededBetween(random, 0.62, 1.05) * scale, 1.6);
+    const ry = Math.max(widthAtEnd * seededBetween(random, 0.98, 1.55) * scale, 2.2);
+    const dropY = point.y + ry * 0.24;
+
+    offCtx.save();
+    offCtx.fillStyle = bloodColor(0.95, -4);
+    offCtx.beginPath();
+    offCtx.ellipse(
+      point.x + seededBetween(random, -rx * 0.12, rx * 0.12),
+      dropY,
+      rx,
+      ry,
+      seededBetween(random, -0.16, 0.16),
+      0,
+      Math.PI * 2
+    );
+    offCtx.fill();
+
+    offCtx.globalCompositeOperation = 'multiply';
+    offCtx.fillStyle = rgba(darkBlood, 0.28);
+    offCtx.beginPath();
+    offCtx.ellipse(point.x + rx * 0.1, dropY + ry * 0.18, rx * 0.62, ry * 0.5, 0, 0, Math.PI * 2);
+    offCtx.fill();
+    offCtx.restore();
+  }
+
+  function drawGravityDrip({ x, y, length, topWidth, bottomWidth, wobble, terminalScale = 1 }) {
+    const samples = 17;
+    const phase = seededBetween(random, 0, Math.PI * 2);
+    const centers = [];
+
+    for (let i = 0; i <= samples; i += 1) {
+      const t = i / samples;
+      const taper = Math.pow(t, 0.72);
+      const localWidth = lerp(topWidth, bottomWidth, taper) * seededBetween(random, 0.88, 1.13);
+      const sway = Math.sin(t * Math.PI * 1.85 + phase) * wobble * (0.2 + t * 0.9);
+      const crawl = seededBetween(random, -wobble, wobble) * 0.12;
+      centers.push({
+        x: x + sway + crawl,
+        y: y + length * t,
+        width: Math.max(bottomWidth, localWidth),
+      });
+    }
+
+    const left = centers.map((point) => ({
+      x: point.x - point.width * 0.5 * seededBetween(random, 0.78, 1.14),
+      y: point.y,
+    }));
+    const right = centers.map((point) => ({
+      x: point.x + point.width * 0.5 * seededBetween(random, 0.82, 1.18),
+      y: point.y,
+    }));
+
+    offCtx.save();
+    drawClosedShape(left, right, bloodColor(0.94));
+    offCtx.globalCompositeOperation = 'multiply';
+    strokeCenterline(centers, rgba(darkBlood, 0.32), Math.max(1, topWidth * 0.34));
+    offCtx.globalCompositeOperation = 'source-over';
+    strokeCenterline(centers, rgba(edgeBlood, 0.2), Math.max(1, topWidth * 0.18), 0.65);
+    offCtx.restore();
+
+    drawTerminalDrop(centers[centers.length - 1], bottomWidth, terminalScale);
+  }
+
+  function drawImpactSplat(cx, cy, baseRadius, options = {}) {
+    const {
+      scaleX = seededBetween(random, 1.0, 1.45),
+      scaleY = seededBetween(random, 0.7, 1.1),
+      rotation = seededBetween(random, -0.8, 0.8),
+    } = options;
+    const points = Math.floor(seededBetween(random, 24, 34));
+
+    offCtx.save();
+    offCtx.translate(cx, cy);
+    offCtx.rotate(rotation);
+    offCtx.scale(scaleX, scaleY);
+    offCtx.fillStyle = bloodColor(0.95, -2);
+    offCtx.beginPath();
+
+    for (let i = 0; i < points; i += 1) {
+      const angle = (Math.PI * 2 * i) / points;
+      const spike = seededBetween(random, 0, 1) < 0.18;
+      const radius = baseRadius * (spike ? seededBetween(random, 1.35, 2.35) : seededBetween(random, 0.48, 1.08));
+      const x = Math.cos(angle) * radius;
+      const yPoint = Math.sin(angle) * radius;
+      if (i === 0) {
+        offCtx.moveTo(x, yPoint);
+      } else {
+        offCtx.lineTo(x, yPoint);
+      }
+    }
+
+    offCtx.closePath();
+    offCtx.fill();
+
+    offCtx.globalCompositeOperation = 'multiply';
+    offCtx.fillStyle = rgba(darkBlood, 0.25);
+    offCtx.beginPath();
+    offCtx.ellipse(0, baseRadius * 0.08, baseRadius * 0.58, baseRadius * 0.42, 0, 0, Math.PI * 2);
+    offCtx.fill();
+    offCtx.restore();
+  }
+
+  function drawDroplet(cx, cy, radius, angle = 0) {
+    offCtx.save();
+    offCtx.translate(cx, cy);
+    offCtx.rotate(angle);
+    offCtx.fillStyle = bloodColor(seededBetween(random, 0.72, 0.94), -3);
+    offCtx.beginPath();
+    offCtx.ellipse(0, 0, radius * seededBetween(random, 1.0, 1.95), radius, 0, 0, Math.PI * 2);
+    offCtx.fill();
+    offCtx.restore();
+  }
+
+  drawGravityDrip({
+    x: width * 0.18,
+    y: -dim * 0.025,
+    length: height * 0.88,
+    topWidth: clamp(dim * 0.026, 7, 14),
+    bottomWidth: clamp(dim * 0.008, 2.1, 4.8),
+    wobble: clamp(dim * 0.008, 1.8, 4.8),
+    terminalScale: 1.25,
+  });
+  drawGravityDrip({
+    x: width * 0.4,
+    y: height * 0.035,
+    length: height * 0.58,
+    topWidth: clamp(dim * 0.018, 5, 9.5),
+    bottomWidth: clamp(dim * 0.006, 1.7, 3.5),
+    wobble: clamp(dim * 0.006, 1.4, 3.8),
+  });
+  drawGravityDrip({
+    x: width * 0.58,
+    y: height * 0.02,
+    length: height * 0.38,
+    topWidth: clamp(dim * 0.011, 3.2, 5.8),
+    bottomWidth: clamp(dim * 0.004, 1.2, 2.6),
+    wobble: clamp(dim * 0.0045, 1, 2.8),
+    terminalScale: 0.82,
+  });
+
+  drawImpactSplat(width * 0.19, height * 0.035, clamp(dim * 0.052, 15, 31), {
+    scaleX: 1.28,
+    scaleY: 0.86,
+    rotation: -0.18,
+  });
+  drawImpactSplat(width * 0.33, height * 0.12, clamp(dim * 0.041, 12, 26), {
+    scaleX: 1.08,
+    scaleY: 0.98,
+    rotation: 0.24,
+  });
+  drawImpactSplat(width * 0.47, height * 0.055, clamp(dim * 0.032, 9, 21), {
+    scaleX: 1.34,
+    scaleY: 0.74,
+    rotation: 0.42,
+  });
+
+  const dropletCount = Math.floor(seededBetween(random, 14, 21));
+  for (let i = 0; i < dropletCount; i += 1) {
+    const cx = seededBetween(random, width * 0.06, width * 0.62);
+    const cy = seededBetween(random, 0, height * 0.25);
+    const radius = seededBetween(random, dim * 0.003, dim * 0.012);
+    drawDroplet(cx, cy, radius, seededBetween(random, -Math.PI, Math.PI));
+  }
+
+  const strayCount = Math.floor(seededBetween(random, 3, 7));
+  for (let i = 0; i < strayCount; i += 1) {
+    const cx = seededBetween(random, width * 0.08, width * 0.72);
+    const cy = seededBetween(random, height * 0.12, height * 0.55);
+    drawDroplet(cx, cy, seededBetween(random, dim * 0.0018, dim * 0.006), seededBetween(random, -0.8, 0.8));
+  }
+
+  return offscreen;
 }
 
 function drawPanel() {
@@ -4552,6 +4812,14 @@ function drawPanel() {
   ctx.lineDashOffset = 2;
   ctx.stroke();
   ctx.restore();
+
+  if (settings.bloodMode && bloodSplatterTexture) {
+    ctx.save();
+    parchmentPath(ctx, panel);
+    ctx.clip();
+    ctx.drawImage(bloodSplatterTexture, panel.x, panel.y, panel.width, panel.height);
+    ctx.restore();
+  }
 }
 
 function buildRowRangesFromFlags(rowSlots, blockedFlags, targetBlocked) {
@@ -5293,6 +5561,10 @@ textIntervalInputEl.addEventListener('input', () => {
   previewConfigSettings();
 });
 paperColorInputEl.addEventListener('input', () => {
+  updateConfigValueLabels();
+  previewConfigSettings();
+});
+bloodModeInputEl.addEventListener('change', () => {
   updateConfigValueLabels();
   previewConfigSettings();
 });
