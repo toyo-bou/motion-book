@@ -492,10 +492,35 @@ function drawSproutFairyFigure(context, metrics, pose = {}) {
     -m.stemWidth * 0.3, -m.stemHeight * 0.72,
     -m.stemWidth * 0.12, bodyTopY * 0.98
   );
-  context.strokeStyle = 'rgba(240, 220, 214, 0.58)';
+  context.strokeStyle = 'rgba(255, 250, 242, 0.62)';
   context.lineWidth = Math.max(1, m.stemWidth * 0.16);
   context.lineCap = 'round';
   context.stroke();
+
+  context.beginPath();
+  context.moveTo(m.stemWidth * 0.14, -m.stemHeight * 0.08);
+  context.bezierCurveTo(
+    m.stemWidth * 0.28, -m.stemHeight * 0.26,
+    m.stemWidth * 0.22, -m.stemHeight * 0.58,
+    m.stemWidth * 0.08, bodyTopY * 0.9
+  );
+  context.strokeStyle = 'rgba(170, 145, 138, 0.18)';
+  context.lineWidth = Math.max(0.8, m.stemWidth * 0.1);
+  context.lineCap = 'round';
+  context.stroke();
+
+  context.fillStyle = 'rgba(80, 55, 48, 0.12)';
+  context.beginPath();
+  context.ellipse(
+    m.topBeanX - m.topBeanRx * 0.15,
+    m.topBeanY + m.topBeanRy * 0.58,
+    m.topBeanRx * 0.46,
+    m.topBeanRy * 0.14,
+    0.14,
+    0,
+    Math.PI * 2
+  );
+  context.fill();
 
   drawSproutBean(context, m.topBeanX, m.topBeanY, m.topBeanRx, m.topBeanRy, 0.18, Math.max(0.8, m.armWidth * 0.42));
 
@@ -683,17 +708,37 @@ function drawDevilHand(context, x, y, handSize, fingerLength, direction = 1) {
 }
 
 function drawDevilTorso(context, m, layout) {
+  const torsoGradient = context.createLinearGradient(0, layout.torsoTopY, 0, layout.torsoBottomY);
+  torsoGradient.addColorStop(0, 'rgba(26, 22, 34, 0.96)');
+  torsoGradient.addColorStop(0.52, DEVIL_CLOTH);
+  torsoGradient.addColorStop(1, 'rgba(4, 2, 8, 0.98)');
+
   context.beginPath();
   context.moveTo(-layout.torsoHalfTop, layout.torsoTopY);
   context.lineTo(layout.torsoHalfTop, layout.torsoTopY);
   context.lineTo(layout.torsoHalfBottom, layout.torsoBottomY);
   context.lineTo(-layout.torsoHalfBottom, layout.torsoBottomY);
   context.closePath();
-  context.fillStyle = DEVIL_CLOTH;
+  context.fillStyle = torsoGradient;
   context.fill();
   context.strokeStyle = DEVIL_CLOTH_STROKE;
   context.lineWidth = Math.max(2, m.armWidth * 0.22);
   context.lineJoin = 'round';
+  context.stroke();
+
+  context.beginPath();
+  context.moveTo(0, layout.torsoTopY + layout.torsoHeight * 0.2);
+  context.bezierCurveTo(
+    m.armWidth * 0.18,
+    layout.torsoTopY + layout.torsoHeight * 0.38,
+    m.armWidth * 0.08,
+    layout.torsoTopY + layout.torsoHeight * 0.62,
+    0,
+    layout.torsoBottomY - layout.torsoHeight * 0.14
+  );
+  context.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+  context.lineWidth = Math.max(1, m.armWidth * 0.12);
+  context.lineCap = 'round';
   context.stroke();
 }
 
@@ -795,6 +840,19 @@ function drawDevilHead(context, m, layout) {
   context.closePath();
   context.fill();
   context.restore();
+
+  context.fillStyle = 'rgba(255, 255, 255, 0.14)';
+  context.beginPath();
+  context.ellipse(
+    -m.headRx * 0.22,
+    layout.headCenterY - m.headRy * 0.28,
+    m.headRx * 0.18,
+    m.headRy * 0.08,
+    -0.18,
+    0,
+    Math.PI * 2
+  );
+  context.fill();
 
   const hairTopY = layout.headCenterY - m.headRy - m.hairHeight * 0.54;
   context.beginPath();
@@ -2849,6 +2907,10 @@ class ParticlePool {
         lightness: 75,
         twinklePhase: 0,
         twinkleSpeed: 5,
+        kind: 'sprout',
+        flareAngle: 0,
+        sparkleScale: 1,
+        accentHue: 55,
         shape: 0,
       });
     }
@@ -2891,6 +2953,7 @@ class ParticleSystem {
       randomBetween(0.8, 1.6),
       randomBetween(0.55, 0.95)
     );
+    this._styleFish(particle, true);
   }
 
   emitFishBody(x, y) {
@@ -2909,6 +2972,7 @@ class ParticleSystem {
       randomBetween(0.6, 1.2),
       randomBetween(0.3, 0.6)
     );
+    this._styleFish(particle, false);
   }
 
   emitSproutLanding(x, y, count) {
@@ -2930,6 +2994,7 @@ class ParticleSystem {
         randomBetween(0.4, 0.9),
         randomBetween(0.7, 1.0)
       );
+      this._styleSprout(particle, true);
     }
   }
 
@@ -2952,6 +3017,7 @@ class ParticleSystem {
         randomBetween(0.3, 0.7),
         randomBetween(0.5, 0.85)
       );
+      this._styleSprout(particle, true);
     }
   }
 
@@ -2971,6 +3037,7 @@ class ParticleSystem {
       randomBetween(0.5, 1.2),
       randomBetween(0.4, 0.8)
     );
+    this._styleSprout(particle, false);
   }
 
   emitDevilWisp(x, y) {
@@ -2987,12 +3054,9 @@ class ParticleSystem {
       y,
       randomBetween(1.2, 3.0),
       randomBetween(1.0, 2.5),
-      randomBetween(0.28, 0.58)
+      randomBetween(0.42, 0.78)
     );
-    particle.hue = randomBetween(260, 290);
-    particle.saturation = randomBetween(46, 74);
-    particle.lightness = randomBetween(58, 78);
-    particle.shape = Math.random() < 0.72 ? 0 : 1;
+    this._styleDevil(particle);
   }
 
   _initCommon(particle, x, y, size, lifetime, maxAlpha) {
@@ -3005,9 +3069,13 @@ class ParticleSystem {
     particle.alpha = maxAlpha;
     particle.twinklePhase = Math.random() * Math.PI * 2;
     particle.twinkleSpeed = randomBetween(4, 8);
+    particle.kind = 'sprout';
+    particle.flareAngle = Math.random() * Math.PI * 2;
+    particle.sparkleScale = randomBetween(0.82, 1.24);
+    particle.accentHue = particle.hue;
 
     const shapeRoll = Math.random();
-    particle.shape = shapeRoll < 0.4 ? 0 : shapeRoll < 0.7 ? 1 : 2;
+    particle.shape = shapeRoll < 0.18 ? 0 : shapeRoll < 0.48 ? 1 : 2;
 
     if (Math.random() < 0.15) {
       particle.hue = randomBetween(35, 55);
@@ -3019,6 +3087,48 @@ class ParticleSystem {
     particle.hue = randomBetween(35, 55);
     particle.saturation = randomBetween(60, 90);
     particle.lightness = randomBetween(65, 92);
+  }
+
+  _styleFish(particle, isTail) {
+    const paletteRoll = Math.random();
+    particle.kind = 'fish';
+    particle.hue = paletteRoll < 0.58 ? randomBetween(186, 216) : paletteRoll < 0.82 ? randomBetween(154, 176) : randomBetween(286, 318);
+    particle.saturation = randomBetween(78, 100);
+    particle.lightness = randomBetween(48, 66);
+    particle.twinkleSpeed = randomBetween(5.5, 9.5);
+    particle.sparkleScale = randomBetween(isTail ? 1.05 : 0.84, isTail ? 1.48 : 1.18);
+    particle.accentHue = (particle.hue + randomBetween(28, 76)) % 360;
+
+    const shapeRoll = Math.random();
+    particle.shape = shapeRoll < 0.28 ? 0 : shapeRoll < 0.58 ? 1 : 2;
+  }
+
+  _styleSprout(particle, isBurst) {
+    const paletteRoll = Math.random();
+    particle.kind = 'sprout';
+    particle.hue = paletteRoll < 0.48 ? randomBetween(42, 62) : paletteRoll < 0.82 ? randomBetween(88, 128) : randomBetween(326, 348);
+    particle.saturation = randomBetween(78, 100);
+    particle.lightness = randomBetween(48, 68);
+    particle.twinkleSpeed = randomBetween(6.5, 11);
+    particle.sparkleScale = randomBetween(isBurst ? 1.1 : 0.94, isBurst ? 1.6 : 1.32);
+    particle.accentHue = (particle.hue + randomBetween(22, 58)) % 360;
+
+    const shapeRoll = Math.random();
+    particle.shape = shapeRoll < 0.08 ? 0 : shapeRoll < 0.4 ? 1 : 2;
+  }
+
+  _styleDevil(particle) {
+    const paletteRoll = Math.random();
+    particle.kind = 'devil';
+    particle.hue = paletteRoll < 0.55 ? randomBetween(276, 318) : paletteRoll < 0.82 ? randomBetween(342, 358) : randomBetween(10, 30);
+    particle.saturation = randomBetween(84, 100);
+    particle.lightness = randomBetween(46, 64);
+    particle.twinkleSpeed = randomBetween(8.5, 15);
+    particle.sparkleScale = randomBetween(1.02, 1.52);
+    particle.accentHue = (particle.hue + randomBetween(34, 92)) % 360;
+
+    const shapeRoll = Math.random();
+    particle.shape = shapeRoll < 0.1 ? 0 : shapeRoll < 0.48 ? 1 : 2;
   }
 
   update(dt) {
@@ -3040,7 +3150,9 @@ class ParticleSystem {
 
       const lifeFraction = particle.age / particle.lifetime;
       particle.alpha = particle.maxAlpha * (1 - Math.pow(lifeFraction, 1.8));
-      particle.alpha *= 0.75 + 0.25 * Math.sin(particle.twinklePhase + particle.age * particle.twinkleSpeed);
+      const twinkle = 0.5 + 0.5 * Math.sin(particle.twinklePhase + particle.age * particle.twinkleSpeed);
+      const twinkleFloor = particle.kind === 'fish' ? 0.42 : particle.kind === 'devil' ? 0.24 : 0.34;
+      particle.alpha *= twinkleFloor + (1 - twinkleFloor) * Math.pow(twinkle, 1.55);
     }
   }
 
@@ -3053,28 +3165,100 @@ class ParticleSystem {
     context.beginPath();
     parchmentPath(context, panelLayout);
     context.clip();
-    context.globalCompositeOperation = 'screen';
+    context.globalCompositeOperation = 'source-over';
 
     for (const particle of this.pool.particles) {
       if (!particle.alive || particle.alpha < 0.01) {
         continue;
       }
+      const drawRadius = particle.size * (particle.kind === 'devil' ? 2.9 : particle.kind === 'fish' ? 2.6 : 2.8);
       if (
-        particle.x + particle.size * 2.5 < panelLayout.x ||
-        particle.x - particle.size * 2.5 > panelLayout.x + panelLayout.width ||
-        particle.y + particle.size * 2.5 < panelLayout.y ||
-        particle.y - particle.size * 2.5 > panelLayout.y + panelLayout.height
+        particle.x + drawRadius < panelLayout.x ||
+        particle.x - drawRadius > panelLayout.x + panelLayout.width ||
+        particle.y + drawRadius < panelLayout.y ||
+        particle.y - drawRadius > panelLayout.y + panelLayout.height
       ) {
         continue;
       }
 
-      const color = `hsla(${particle.hue}, ${particle.saturation}%, ${particle.lightness}%, ${particle.alpha})`;
-      const glowColor = `hsla(${particle.hue}, ${particle.saturation}%, ${particle.lightness}%, ${particle.alpha * 0.15})`;
+      const accentHue = particle.accentHue ?? particle.hue;
+      const colorAlpha = Math.min(1, particle.alpha * 1.16);
+      const glowLightness = Math.min(72, particle.lightness + 8);
+      const color = `hsla(${particle.hue}, ${particle.saturation}%, ${particle.lightness}%, ${colorAlpha})`;
+      const glowAlpha = particle.alpha * (particle.kind === 'devil' ? 0.32 : particle.kind === 'fish' ? 0.24 : 0.28);
+      const coreColor = `hsla(${accentHue}, 100%, 58%, ${Math.min(1, particle.alpha * 0.98)})`;
+      const pinColor = `hsla(${particle.hue}, 100%, 70%, ${particle.alpha * 0.42})`;
+      const flareAlpha = particle.alpha * particle.sparkleScale;
 
-      context.fillStyle = glowColor;
+      const glow = context.createRadialGradient(
+        particle.x,
+        particle.y,
+        Math.max(0.1, particle.size * 0.22),
+        particle.x,
+        particle.y,
+        drawRadius
+      );
+      glow.addColorStop(0, `hsla(${particle.hue}, ${particle.saturation}%, ${glowLightness}%, ${glowAlpha})`);
+      glow.addColorStop(0.48, `hsla(${accentHue}, 100%, ${glowLightness}%, ${glowAlpha * 0.34})`);
+      glow.addColorStop(1, `hsla(${accentHue}, 100%, ${glowLightness}%, 0)`);
+      context.fillStyle = glow;
       context.beginPath();
-      context.arc(particle.x, particle.y, particle.size * 2.5, 0, Math.PI * 2);
+      context.arc(particle.x, particle.y, drawRadius, 0, Math.PI * 2);
       context.fill();
+
+      if (particle.kind === 'fish') {
+        const speed = Math.hypot(particle.vx, particle.vy) || 1;
+        const trailX = particle.vx / speed;
+        const trailY = particle.vy / speed;
+        context.strokeStyle = `hsla(${accentHue}, 100%, 72%, ${particle.alpha * 0.58})`;
+        context.lineWidth = Math.max(0.5, particle.size * 0.22);
+        context.lineCap = 'round';
+        context.beginPath();
+        context.moveTo(particle.x - trailX * particle.size * 2.6, particle.y - trailY * particle.size * 2.6);
+        context.quadraticCurveTo(
+          particle.x - trailY * particle.size * 0.45,
+          particle.y + trailX * particle.size * 0.45,
+          particle.x + trailX * particle.size * 0.8,
+          particle.y + trailY * particle.size * 0.8
+        );
+        context.stroke();
+
+        const glint = particle.size * (1.05 + particle.sparkleScale * 0.26);
+        context.strokeStyle = `hsla(${particle.hue}, 100%, 82%, ${flareAlpha * 0.44})`;
+        context.lineWidth = Math.max(0.5, particle.size * 0.16);
+        context.beginPath();
+        context.moveTo(particle.x - trailY * glint, particle.y + trailX * glint);
+        context.lineTo(particle.x + trailY * glint, particle.y - trailX * glint);
+        context.stroke();
+      } else if (particle.kind === 'sprout') {
+        const flare = particle.size * (1.55 + particle.sparkleScale * 0.58);
+        const angle = particle.flareAngle + particle.age * 0.45;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        context.strokeStyle = `hsla(${accentHue}, 100%, 72%, ${flareAlpha * 0.78})`;
+        context.lineWidth = Math.max(0.55, particle.size * 0.2);
+        context.lineCap = 'round';
+        context.beginPath();
+        context.moveTo(particle.x - cos * flare, particle.y - sin * flare);
+        context.lineTo(particle.x + cos * flare, particle.y + sin * flare);
+        context.moveTo(particle.x + sin * flare * 0.64, particle.y - cos * flare * 0.64);
+        context.lineTo(particle.x - sin * flare * 0.64, particle.y + cos * flare * 0.64);
+        context.stroke();
+      } else if (particle.kind === 'devil') {
+        const flare = particle.size * (1.95 + particle.sparkleScale * 0.74);
+        const angle = particle.flareAngle + Math.sin(particle.age * particle.twinkleSpeed) * 0.42;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        context.strokeStyle = `hsla(${particle.hue}, 100%, 68%, ${flareAlpha * 0.82})`;
+        context.lineWidth = Math.max(0.65, particle.size * 0.24);
+        context.lineCap = 'round';
+        context.beginPath();
+        context.moveTo(particle.x - cos * flare, particle.y - sin * flare);
+        context.lineTo(particle.x + cos * flare, particle.y + sin * flare);
+        context.moveTo(particle.x + sin * flare * 0.36, particle.y - cos * flare * 0.36);
+        context.lineTo(particle.x - sin * flare * 0.36, particle.y + cos * flare * 0.36);
+        context.stroke();
+      }
 
       context.fillStyle = color;
 
@@ -3105,6 +3289,16 @@ class ParticleSystem {
         context.closePath();
         context.fill();
       }
+
+      context.fillStyle = coreColor;
+      context.beginPath();
+      context.arc(particle.x, particle.y, Math.max(0.44, particle.size * 0.32), 0, Math.PI * 2);
+      context.fill();
+
+      context.fillStyle = pinColor;
+      context.beginPath();
+      context.arc(particle.x, particle.y, Math.max(0.24, particle.size * 0.14), 0, Math.PI * 2);
+      context.fill();
     }
 
     context.restore();
@@ -3471,6 +3665,15 @@ class SegmentedFish {
       x: tail.x - tail.tangent.x * (this.metrics.tailLength + this.metrics.segmentSpacing * 0.1),
       y: tail.y - tail.tangent.y * (this.metrics.tailLength + this.metrics.segmentSpacing * 0.1),
     };
+    const bodyGradient = context.createLinearGradient(
+      head.x + head.normal.x * head.halfWidth,
+      head.y + head.normal.y * head.halfWidth,
+      head.x - head.normal.x * head.halfWidth,
+      head.y - head.normal.y * head.halfWidth
+    );
+    bodyGradient.addColorStop(0, 'rgba(44, 56, 88, 0.44)');
+    bodyGradient.addColorStop(0.5, FISH_FILL);
+    bodyGradient.addColorStop(1, 'rgba(116, 130, 166, 0.34)');
 
     context.save();
     context.shadowColor = 'rgba(24, 20, 36, 0.14)';
@@ -3478,7 +3681,7 @@ class SegmentedFish {
     context.beginPath();
     traceSmoothLine(context, [nose, ...leftPoints, tailLeft, tailTip, tailRight, ...rightPoints.reverse(), nose]);
     context.closePath();
-    context.fillStyle = FISH_FILL;
+    context.fillStyle = bodyGradient;
     context.fill();
     context.strokeStyle = FISH_STROKE;
     context.lineWidth = 1.5;
@@ -3498,16 +3701,36 @@ class SegmentedFish {
       x: finSegment.x - finSegment.tangent.x * this.metrics.segmentSpacing * 0.1 + finSegment.normal.x * finSegment.halfWidth * 1.95,
       y: finSegment.y - finSegment.tangent.y * this.metrics.segmentSpacing * 0.1 + finSegment.normal.y * finSegment.halfWidth * 1.95,
     };
+    const finRoot = {
+      x: (finA.x + finB.x) * 0.5,
+      y: (finA.y + finB.y) * 0.5,
+    };
+    const finGradient = context.createLinearGradient(finRoot.x, finRoot.y, finTip.x, finTip.y);
+    finGradient.addColorStop(0, 'rgba(130, 140, 176, 0.42)');
+    finGradient.addColorStop(1, 'rgba(170, 185, 220, 0.18)');
 
     context.beginPath();
     context.moveTo(finA.x, finA.y);
     context.quadraticCurveTo(finTip.x, finTip.y, finB.x, finB.y);
     context.closePath();
-    context.fillStyle = FISH_ACCENT;
+    context.fillStyle = finGradient;
     context.fill();
     context.strokeStyle = FISH_STROKE;
     context.lineWidth = 1.1;
     context.stroke();
+
+    context.fillStyle = 'rgba(235, 242, 255, 0.22)';
+    context.beginPath();
+    context.ellipse(
+      head.x + head.tangent.x * this.metrics.headLength * 0.42 + head.normal.x * head.halfWidth * 0.34,
+      head.y + head.tangent.y * this.metrics.headLength * 0.42 + head.normal.y * head.halfWidth * 0.34,
+      Math.max(1.4, head.halfWidth * 0.22),
+      Math.max(0.6, head.halfWidth * 0.09),
+      Math.atan2(head.tangent.y, head.tangent.x) - 0.14,
+      0,
+      Math.PI * 2
+    );
+    context.fill();
 
     const eye = {
       x: head.x + head.tangent.x * this.metrics.headLength * 0.22 + head.normal.x * head.halfWidth * 0.18,
