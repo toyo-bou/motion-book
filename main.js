@@ -36,20 +36,20 @@ const audioClearButtonEl = document.getElementById('audio-clear-button');
 
 const FONT_SIZE_BASELINE_PX = 14;
 const LEGACY_DEFAULT_FONT_SIZE_PX = 18;
-const MIN_FONT_SIZE = 10;
-const MAX_FONT_SIZE = 24;
+const MIN_FONT_SIZE = 8;
+const MAX_FONT_SIZE = 36;
 const LINE_HEIGHT_RATIO = 1.72;
 const CJK_WIDTH_RATIO = 1.28;
 const TARGET_VISIBLE_CHARS = 600;
 const MIN_VISIBLE_CHARS = 120;
 const A4_ASPECT_RATIO = 1 / Math.sqrt(2);
 const PARCHMENT_SCALE = 1.1;
-const MIN_TEXT_FLOW_INTERVAL_MS = 50;
-const MAX_TEXT_FLOW_INTERVAL_MS = 250;
+const MIN_TEXT_FLOW_INTERVAL_MS = 20;
+const MAX_TEXT_FLOW_INTERVAL_MS = 600;
 const TEXT_CLEARANCE_MULTIPLIER = 1.18;
 const OUTLINE_GAP_BASELINE_PERCENT = 100;
-const MIN_OUTLINE_GAP_PERCENT = 80;
-const MAX_OUTLINE_GAP_PERCENT = 140;
+const MIN_OUTLINE_GAP_PERCENT = 50;
+const MAX_OUTLINE_GAP_PERCENT = 220;
 const FONT_LOAD_TIMEOUT_MS = 3000;
 const RESIZE_DEBOUNCE_MS = 180;
 const SETTINGS_STORAGE_KEY = 'motion-book.settings.v1';
@@ -67,6 +67,12 @@ const FONT_OPTIONS = Object.freeze({
     loadName: 'Hachi Maru Pop',
     weight: 400,
     stack: '"Hachi Maru Pop", "Kiwi Maru", "Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif',
+  },
+  'dela-gothic-one': {
+    label: 'Dela Gothic One',
+    loadName: 'Dela Gothic One',
+    weight: 400,
+    stack: '"Dela Gothic One", "Yu Gothic", "Hiragino Kaku Gothic ProN", sans-serif',
   },
   'yu-gothic': {
     label: 'Yu Gothic',
@@ -2254,6 +2260,64 @@ function addNoise(context, width, height, amount) {
   context.putImageData(image, 0, 0);
 }
 
+function addPaperSurfaceRoughness(context, width, height) {
+  const image = context.getImageData(0, 0, width, height);
+  const { data } = image;
+  const rowDrifts = new Float32Array(height);
+  let rowDrift = 0;
+
+  for (let y = 0; y < height; y += 1) {
+    rowDrift = rowDrift * 0.86 + (Math.random() - 0.5) * 1.7;
+    rowDrifts[y] = rowDrift;
+  }
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = (y * width + x) * 4;
+      const fineGrain = (Math.random() - 0.5) * 10;
+      const tooth = Math.random() < 0.044 ? randomBetween(-22, 16) : 0;
+      const fiberLift = Math.sin((x + y * 0.31) * 0.16) * 0.9 + rowDrifts[y];
+      const drift = fineGrain + tooth + fiberLift;
+
+      data[index] = clamp(data[index] + drift * 0.88, 0, 255);
+      data[index + 1] = clamp(data[index + 1] + drift * 0.72, 0, 255);
+      data[index + 2] = clamp(data[index + 2] + drift * 0.48, 0, 255);
+    }
+  }
+
+  context.putImageData(image, 0, 0);
+
+  context.save();
+  context.lineCap = 'round';
+  context.lineWidth = 0.55;
+
+  for (let index = 0; index < 110; index += 1) {
+    const x = randomBetween(0, width);
+    const y = randomBetween(0, height);
+    const length = randomBetween(width * 0.018, width * 0.12);
+    const bend = randomBetween(-height * 0.006, height * 0.006);
+    context.strokeStyle = `rgba(96, 68, 48, ${randomBetween(0.018, 0.05)})`;
+    context.beginPath();
+    context.moveTo(x, y);
+    context.quadraticCurveTo(x + length * 0.5, y + bend, x + length, y + randomBetween(-1.5, 1.5));
+    context.stroke();
+  }
+
+  context.globalCompositeOperation = 'screen';
+  for (let index = 0; index < 70; index += 1) {
+    const x = randomBetween(0, width);
+    const y = randomBetween(0, height);
+    const length = randomBetween(width * 0.012, width * 0.08);
+    context.strokeStyle = `rgba(255, 248, 230, ${randomBetween(0.025, 0.07)})`;
+    context.beginPath();
+    context.moveTo(x, y);
+    context.lineTo(x + length, y + randomBetween(-1, 1));
+    context.stroke();
+  }
+
+  context.restore();
+}
+
 function createBackdropTexture(width, height) {
   const offscreen = document.createElement('canvas');
   offscreen.width = Math.max(1, Math.floor(width));
@@ -2308,33 +2372,12 @@ function createPaperTexture(width, height) {
   offscreen.height = Math.max(1, Math.floor(height));
   const offCtx = offscreen.getContext('2d');
   const baseColor = hexToRgb(settings.paperColor);
-  const topColor = mixRgb(baseColor, { r: 240, g: 236, b: 232 }, 0.26);
-  const middleColor = mixRgb(baseColor, { r: 120, g: 90, b: 108 }, 0.1);
-  const bottomColor = mixRgb(baseColor, { r: 245, g: 240, b: 236 }, 0.18);
-  const vignetteEdgeColor = mixRgb(baseColor, { r: 72, g: 52, b: 64 }, 0.42);
   const stainBaseColor = mixRgb(baseColor, { r: 112, g: 84, b: 98 }, 0.5);
 
-  const gradient = offCtx.createLinearGradient(0, 0, width, height);
-  gradient.addColorStop(0, rgbToCss(topColor));
-  gradient.addColorStop(0.45, rgbToCss(middleColor));
-  gradient.addColorStop(1, rgbToCss(bottomColor));
-  offCtx.fillStyle = gradient;
+  offCtx.fillStyle = rgbToCss(baseColor);
   offCtx.fillRect(0, 0, width, height);
 
-  addNoise(offCtx, offscreen.width, offscreen.height, 12);
-
-  const vignette = offCtx.createRadialGradient(
-    width * 0.52,
-    height * 0.44,
-    Math.min(width, height) * 0.12,
-    width * 0.5,
-    height * 0.5,
-    Math.max(width, height) * 0.72
-  );
-  vignette.addColorStop(0, 'rgba(255, 249, 237, 0)');
-  vignette.addColorStop(1, rgbToCss(vignetteEdgeColor, 0.14));
-  offCtx.fillStyle = vignette;
-  offCtx.fillRect(0, 0, width, height);
+  addNoise(offCtx, offscreen.width, offscreen.height, 16);
 
   for (let index = 0; index < 14; index += 1) {
     const radius = randomBetween(Math.min(width, height) * 0.025, Math.min(width, height) * 0.08);
@@ -2348,9 +2391,11 @@ function createPaperTexture(width, height) {
     offCtx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
   }
 
-  offCtx.strokeStyle = 'rgba(140, 110, 120, 0.06)';
+  addPaperSurfaceRoughness(offCtx, offscreen.width, offscreen.height);
+
+  offCtx.strokeStyle = 'rgba(130, 94, 82, 0.085)';
   offCtx.lineWidth = 1;
-  for (let index = 0; index < 42; index += 1) {
+  for (let index = 0; index < 56; index += 1) {
     const y = randomBetween(0, height);
     offCtx.beginPath();
     offCtx.moveTo(0, y);
@@ -5003,13 +5048,6 @@ function drawPanel() {
   if (paperTexture) {
     ctx.drawImage(paperTexture, panel.x, panel.y, panel.width, panel.height);
   }
-
-  const wash = ctx.createLinearGradient(panel.x, panel.y, panel.x, panel.y + panel.height);
-  wash.addColorStop(0, 'rgba(248, 244, 238, 0.2)');
-  wash.addColorStop(0.5, 'rgba(255, 255, 255, 0)');
-  wash.addColorStop(1, 'rgba(100, 80, 90, 0.06)');
-  ctx.fillStyle = wash;
-  ctx.fillRect(panel.x, panel.y, panel.width, panel.height);
 
   parchmentPath(ctx, panel);
   ctx.globalCompositeOperation = 'multiply';
