@@ -2902,7 +2902,7 @@ function createRibbonGeometry(ribbonWidth) {
     ribbonHeight,
     knotWidth,
     knotHeight,
-    maxHalfWidth: ribbonWidth * 0.63,
+    maxHalfWidth: ribbonWidth * 0.78,
     bodyLength: ribbonHeight,
     strokeWidth: Math.max(1.2, ribbonWidth * 0.018),
     driftSpeed: clamp(ribbonWidth * 0.24, 18, 32),
@@ -2912,17 +2912,17 @@ function createRibbonGeometry(ribbonWidth) {
     trembleAmplitude: clamp(ribbonWidth * 0.0008, 0.045, 0.082),
     wingRegions: [
       {
-        x: -ribbonWidth * 0.31,
+        x: -ribbonWidth * 0.38,
         y: wingCenterY,
-        rx: ribbonWidth * 0.32,
-        ry: ribbonHeight * 0.31,
+        rx: ribbonWidth * 0.40,
+        ry: ribbonHeight * 0.38,
         angle: -0.12,
       },
       {
-        x: ribbonWidth * 0.31,
+        x: ribbonWidth * 0.38,
         y: wingCenterY,
-        rx: ribbonWidth * 0.32,
-        ry: ribbonHeight * 0.31,
+        rx: ribbonWidth * 0.40,
+        ry: ribbonHeight * 0.38,
         angle: 0.12,
       },
     ],
@@ -2931,29 +2931,29 @@ function createRibbonGeometry(ribbonWidth) {
         x: -ribbonWidth * 0.18,
         y: tailCenterY,
         rx: ribbonWidth * 0.14,
-        ry: ribbonHeight * 0.35,
+        ry: ribbonHeight * 0.18,
         angle: -0.18,
       },
       {
         x: ribbonWidth * 0.18,
         y: tailCenterY,
         rx: ribbonWidth * 0.14,
-        ry: ribbonHeight * 0.35,
+        ry: ribbonHeight * 0.18,
         angle: 0.18,
       },
     ],
     glowAnchors: [
-      { x: -ribbonWidth * 0.54, y: -ribbonHeight * 0.12 },
-      { x: ribbonWidth * 0.54, y: -ribbonHeight * 0.12 },
-      { x: -ribbonWidth * 0.24, y: ribbonHeight * 0.58 },
-      { x: ribbonWidth * 0.24, y: ribbonHeight * 0.58 },
+      { x: -ribbonWidth * 0.66, y: -ribbonHeight * 0.12 },
+      { x: ribbonWidth * 0.66, y: -ribbonHeight * 0.12 },
+      { x: -ribbonWidth * 0.24, y: ribbonHeight * 0.45 },
+      { x: ribbonWidth * 0.24, y: ribbonHeight * 0.45 },
       { x: 0, y: -ribbonHeight * 0.02 },
     ],
     motionInsets: {
-      left: ribbonWidth * 0.64,
-      right: ribbonWidth * 0.64,
+      left: ribbonWidth * 0.78,
+      right: ribbonWidth * 0.78,
       top: ribbonHeight * 0.66,
-      bottom: ribbonHeight * 0.86,
+      bottom: ribbonHeight * 0.56,
     },
   };
 }
@@ -3051,36 +3051,28 @@ const CHARACTER_ORDER = Object.freeze(
 function appendRibbonLeftWingPath(context, m) {
   context.moveTo(-m.knotWidth * 0.48, -m.knotHeight * 0.44);
   context.bezierCurveTo(
-    -m.ribbonWidth * 0.18,
-    -m.ribbonHeight * 0.54,
-    -m.ribbonWidth * 0.4,
-    -m.ribbonHeight * 0.68,
-    -m.ribbonWidth * 0.55,
-    -m.ribbonHeight * 0.54
+    -m.ribbonWidth * 0.28,
+    -m.ribbonHeight * 0.66,
+    -m.ribbonWidth * 0.54,
+    -m.ribbonHeight * 0.80,
+    -m.ribbonWidth * 0.66,
+    -m.ribbonHeight * 0.56
   );
   context.bezierCurveTo(
-    -m.ribbonWidth * 0.68,
-    -m.ribbonHeight * 0.42,
-    -m.ribbonWidth * 0.69,
-    -m.ribbonHeight * 0.2,
-    -m.ribbonWidth * 0.6,
-    -m.ribbonHeight * 0.06
+    -m.ribbonWidth * 0.78,
+    -m.ribbonHeight * 0.34,
+    -m.ribbonWidth * 0.76,
+    m.ribbonHeight * 0.04,
+    -m.ribbonWidth * 0.60,
+    m.ribbonHeight * 0.16
   );
   context.bezierCurveTo(
-    -m.ribbonWidth * 0.53,
-    m.ribbonHeight * 0.08,
-    -m.ribbonWidth * 0.36,
-    m.ribbonHeight * 0.05,
-    -m.ribbonWidth * 0.23,
-    m.ribbonHeight * 0.06
-  );
-  context.bezierCurveTo(
-    -m.ribbonWidth * 0.16,
-    m.ribbonHeight * 0.07,
-    -m.ribbonWidth * 0.13,
-    m.ribbonHeight * 0.17,
-    -m.ribbonWidth * 0.07,
-    m.ribbonHeight * 0.24
+    -m.ribbonWidth * 0.44,
+    m.ribbonHeight * 0.24,
+    -m.ribbonWidth * 0.22,
+    m.ribbonHeight * 0.22,
+    -m.knotWidth * 0.48,
+    m.knotHeight * 0.42
   );
   context.lineTo(-m.knotWidth * 0.48, m.knotHeight * 0.42);
   context.closePath();
@@ -3089,36 +3081,28 @@ function appendRibbonLeftWingPath(context, m) {
 function appendRibbonRightWingPath(context, m) {
   context.moveTo(m.knotWidth * 0.48, -m.knotHeight * 0.44);
   context.bezierCurveTo(
-    m.ribbonWidth * 0.18,
-    -m.ribbonHeight * 0.54,
-    m.ribbonWidth * 0.4,
-    -m.ribbonHeight * 0.68,
-    m.ribbonWidth * 0.55,
-    -m.ribbonHeight * 0.54
+    m.ribbonWidth * 0.28,
+    -m.ribbonHeight * 0.66,
+    m.ribbonWidth * 0.54,
+    -m.ribbonHeight * 0.80,
+    m.ribbonWidth * 0.66,
+    -m.ribbonHeight * 0.56
   );
   context.bezierCurveTo(
-    m.ribbonWidth * 0.68,
-    -m.ribbonHeight * 0.42,
-    m.ribbonWidth * 0.69,
-    -m.ribbonHeight * 0.2,
-    m.ribbonWidth * 0.6,
-    -m.ribbonHeight * 0.06
+    m.ribbonWidth * 0.78,
+    -m.ribbonHeight * 0.34,
+    m.ribbonWidth * 0.76,
+    m.ribbonHeight * 0.04,
+    m.ribbonWidth * 0.60,
+    m.ribbonHeight * 0.16
   );
   context.bezierCurveTo(
-    m.ribbonWidth * 0.53,
-    m.ribbonHeight * 0.08,
-    m.ribbonWidth * 0.36,
-    m.ribbonHeight * 0.05,
-    m.ribbonWidth * 0.23,
-    m.ribbonHeight * 0.06
-  );
-  context.bezierCurveTo(
-    m.ribbonWidth * 0.16,
-    m.ribbonHeight * 0.07,
-    m.ribbonWidth * 0.13,
-    m.ribbonHeight * 0.17,
-    m.ribbonWidth * 0.07,
-    m.ribbonHeight * 0.24
+    m.ribbonWidth * 0.44,
+    m.ribbonHeight * 0.24,
+    m.ribbonWidth * 0.22,
+    m.ribbonHeight * 0.22,
+    m.knotWidth * 0.48,
+    m.knotHeight * 0.42
   );
   context.lineTo(m.knotWidth * 0.48, m.knotHeight * 0.42);
   context.closePath();
@@ -3127,34 +3111,34 @@ function appendRibbonRightWingPath(context, m) {
 function appendRibbonLeftTailPath(context, m) {
   context.moveTo(-m.knotWidth * 0.42, m.knotHeight * 0.24);
   context.bezierCurveTo(
-    -m.ribbonWidth * 0.21,
-    m.ribbonHeight * 0.25,
-    -m.ribbonWidth * 0.39,
-    m.ribbonHeight * 0.42,
-    -m.ribbonWidth * 0.5,
-    m.ribbonHeight * 0.58
-  );
-  context.bezierCurveTo(
-    -m.ribbonWidth * 0.39,
-    m.ribbonHeight * 0.64,
-    -m.ribbonWidth * 0.3,
-    m.ribbonHeight * 0.61,
-    -m.ribbonWidth * 0.23,
-    m.ribbonHeight * 0.57
-  );
-  context.bezierCurveTo(
-    -m.ribbonWidth * 0.25,
-    m.ribbonHeight * 0.72,
-    -m.ribbonWidth * 0.14,
-    m.ribbonHeight * 0.84,
-    -m.ribbonWidth * 0.06,
-    m.ribbonHeight * 0.7
-  );
-  context.bezierCurveTo(
-    -m.ribbonWidth * 0.02,
-    m.ribbonHeight * 0.53,
-    -m.ribbonWidth * 0.04,
+    -m.ribbonWidth * 0.26,
+    m.ribbonHeight * 0.14,
+    -m.ribbonWidth * 0.42,
     m.ribbonHeight * 0.34,
+    -m.ribbonWidth * 0.44,
+    m.ribbonHeight * 0.50
+  );
+  context.bezierCurveTo(
+    -m.ribbonWidth * 0.40,
+    m.ribbonHeight * 0.56,
+    -m.ribbonWidth * 0.30,
+    m.ribbonHeight * 0.46,
+    -m.ribbonWidth * 0.22,
+    m.ribbonHeight * 0.42
+  );
+  context.bezierCurveTo(
+    -m.ribbonWidth * 0.14,
+    m.ribbonHeight * 0.38,
+    -m.ribbonWidth * 0.08,
+    m.ribbonHeight * 0.48,
+    -m.ribbonWidth * 0.06,
+    m.ribbonHeight * 0.52
+  );
+  context.bezierCurveTo(
+    -m.ribbonWidth * 0.04,
+    m.ribbonHeight * 0.36,
+    -m.ribbonWidth * 0.02,
+    m.ribbonHeight * 0.20,
     -m.knotWidth * 0.06,
     m.knotHeight * 0.34
   );
@@ -3164,34 +3148,34 @@ function appendRibbonLeftTailPath(context, m) {
 function appendRibbonRightTailPath(context, m) {
   context.moveTo(m.knotWidth * 0.42, m.knotHeight * 0.24);
   context.bezierCurveTo(
-    m.ribbonWidth * 0.21,
-    m.ribbonHeight * 0.25,
-    m.ribbonWidth * 0.39,
-    m.ribbonHeight * 0.42,
-    m.ribbonWidth * 0.5,
-    m.ribbonHeight * 0.58
-  );
-  context.bezierCurveTo(
-    m.ribbonWidth * 0.39,
-    m.ribbonHeight * 0.64,
-    m.ribbonWidth * 0.3,
-    m.ribbonHeight * 0.61,
-    m.ribbonWidth * 0.23,
-    m.ribbonHeight * 0.57
-  );
-  context.bezierCurveTo(
-    m.ribbonWidth * 0.25,
-    m.ribbonHeight * 0.72,
-    m.ribbonWidth * 0.14,
-    m.ribbonHeight * 0.84,
-    m.ribbonWidth * 0.06,
-    m.ribbonHeight * 0.7
-  );
-  context.bezierCurveTo(
-    m.ribbonWidth * 0.02,
-    m.ribbonHeight * 0.53,
-    m.ribbonWidth * 0.04,
+    m.ribbonWidth * 0.26,
+    m.ribbonHeight * 0.14,
+    m.ribbonWidth * 0.42,
     m.ribbonHeight * 0.34,
+    m.ribbonWidth * 0.44,
+    m.ribbonHeight * 0.50
+  );
+  context.bezierCurveTo(
+    m.ribbonWidth * 0.40,
+    m.ribbonHeight * 0.56,
+    m.ribbonWidth * 0.30,
+    m.ribbonHeight * 0.46,
+    m.ribbonWidth * 0.22,
+    m.ribbonHeight * 0.42
+  );
+  context.bezierCurveTo(
+    m.ribbonWidth * 0.14,
+    m.ribbonHeight * 0.38,
+    m.ribbonWidth * 0.08,
+    m.ribbonHeight * 0.48,
+    m.ribbonWidth * 0.06,
+    m.ribbonHeight * 0.52
+  );
+  context.bezierCurveTo(
+    m.ribbonWidth * 0.04,
+    m.ribbonHeight * 0.36,
+    m.ribbonWidth * 0.02,
+    m.ribbonHeight * 0.20,
     m.knotWidth * 0.06,
     m.knotHeight * 0.34
   );
@@ -3336,7 +3320,7 @@ function drawRibbonFigure(context, metrics, options = {}) {
   context.arc(0, m.ribbonHeight * 0.08, m.ribbonWidth * 0.72, 0, Math.PI * 2);
   context.fill();
 
-  const wingGradient = context.createLinearGradient(0, -m.ribbonHeight * 0.62, 0, m.ribbonHeight * 0.22);
+  const wingGradient = context.createLinearGradient(0, -m.ribbonHeight * 0.80, 0, m.ribbonHeight * 0.22);
   wingGradient.addColorStop(0, RIBBON_FILL_LIGHT);
   wingGradient.addColorStop(0.58, RIBBON_FILL_MID);
   wingGradient.addColorStop(1, RIBBON_FILL_DEEP);
@@ -3353,12 +3337,12 @@ function drawRibbonFigure(context, metrics, options = {}) {
     { x: m.ribbonWidth * 0.2, y: m.ribbonHeight * 0.43, radius: m.ribbonWidth * 0.18, alpha: 0.18 },
   ], m);
   fillRibbonPart(context, appendRibbonLeftWingPath, wingGradient, [
-    { x: -m.ribbonWidth * 0.38, y: -m.ribbonHeight * 0.3, radius: m.ribbonWidth * 0.24, alpha: 0.2 },
-    { x: -m.ribbonWidth * 0.28, y: m.ribbonHeight * 0.05, radius: m.ribbonWidth * 0.18, alpha: 0.13 },
+    { x: -m.ribbonWidth * 0.46, y: -m.ribbonHeight * 0.28, radius: m.ribbonWidth * 0.28, alpha: 0.2 },
+    { x: -m.ribbonWidth * 0.32, y: m.ribbonHeight * 0.10, radius: m.ribbonWidth * 0.18, alpha: 0.13 },
   ], m);
   fillRibbonPart(context, appendRibbonRightWingPath, wingGradient, [
-    { x: m.ribbonWidth * 0.38, y: -m.ribbonHeight * 0.3, radius: m.ribbonWidth * 0.24, alpha: 0.2 },
-    { x: m.ribbonWidth * 0.28, y: m.ribbonHeight * 0.05, radius: m.ribbonWidth * 0.18, alpha: 0.13 },
+    { x: m.ribbonWidth * 0.46, y: -m.ribbonHeight * 0.28, radius: m.ribbonWidth * 0.28, alpha: 0.2 },
+    { x: m.ribbonWidth * 0.32, y: m.ribbonHeight * 0.10, radius: m.ribbonWidth * 0.18, alpha: 0.13 },
   ], m);
   drawRibbonWingFold(context, appendRibbonLeftWingPath, m, -1);
   drawRibbonWingFold(context, appendRibbonRightWingPath, m, 1);
@@ -3376,10 +3360,10 @@ function drawRibbonFigure(context, metrics, options = {}) {
   context.lineWidth = Math.max(0.6, m.strokeWidth * 0.52);
   context.lineCap = 'round';
   context.beginPath();
-  context.moveTo(-m.ribbonWidth * 0.5, m.ribbonHeight * 0.07);
-  context.bezierCurveTo(-m.ribbonWidth * 0.34, m.ribbonHeight * 0.04, -m.ribbonWidth * 0.2, m.ribbonHeight * 0.03, -m.knotWidth * 0.62, 0);
-  context.moveTo(m.ribbonWidth * 0.5, m.ribbonHeight * 0.07);
-  context.bezierCurveTo(m.ribbonWidth * 0.34, m.ribbonHeight * 0.04, m.ribbonWidth * 0.2, m.ribbonHeight * 0.03, m.knotWidth * 0.62, 0);
+  context.moveTo(-m.ribbonWidth * 0.58, m.ribbonHeight * 0.14);
+  context.bezierCurveTo(-m.ribbonWidth * 0.38, m.ribbonHeight * 0.08, -m.ribbonWidth * 0.2, m.ribbonHeight * 0.03, -m.knotWidth * 0.62, 0);
+  context.moveTo(m.ribbonWidth * 0.58, m.ribbonHeight * 0.14);
+  context.bezierCurveTo(m.ribbonWidth * 0.38, m.ribbonHeight * 0.08, m.ribbonWidth * 0.2, m.ribbonHeight * 0.03, m.knotWidth * 0.62, 0);
   context.stroke();
   context.restore();
 
@@ -4652,6 +4636,7 @@ class BigRibbon {
     this.trembleCycles = 0;
     this.tremblePower = 0;
     this.nextTrembleDelay = randomBetween(1.2, 3.2);
+    this.devilHeadPoint = null;
     this.pickTarget();
   }
 
@@ -4672,6 +4657,32 @@ class BigRibbon {
 
     this.targetX = randomBetween(this.bounds.minX + insetX, this.bounds.maxX - insetX);
     this.targetY = randomBetween(this.bounds.minY + insetY, this.bounds.maxY - insetY);
+  }
+
+  setDevilHeadTarget(point) {
+    if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      this.devilHeadPoint = null;
+      return;
+    }
+
+    this.devilHeadPoint = {
+      x: point.x,
+      y: point.y,
+    };
+  }
+
+  getGuidedTarget() {
+    if (!this.devilHeadPoint) {
+      return null;
+    }
+
+    const m = this.metrics;
+    const lateralDrift = Math.sin(this.hoverPhase * 0.58 + this.driftPhase) * m.ribbonWidth * 0.12;
+
+    return {
+      x: clamp(this.devilHeadPoint.x + lateralDrift, this.bounds.minX, this.bounds.maxX),
+      y: clamp(this.devilHeadPoint.y - m.ribbonHeight * 0.72, this.bounds.minY, this.bounds.maxY),
+    };
   }
 
   toLocalPoint(px, py) {
@@ -4707,9 +4718,15 @@ class BigRibbon {
     const boundsHeight = Math.max(1, this.bounds.maxY - this.bounds.minY);
     const centerX = (this.bounds.minX + this.bounds.maxX) * 0.5;
     const centerY = (this.bounds.minY + this.bounds.maxY) * 0.5;
+    const guidedTarget = this.getGuidedTarget();
+
+    if (guidedTarget) {
+      this.targetX = guidedTarget.x;
+      this.targetY = guidedTarget.y;
+    }
 
     const targetDistance = Math.hypot(this.targetX - this.x, this.targetY - this.y);
-    if (targetDistance < m.ribbonWidth * 0.9 || Math.random() < dt * 0.04) {
+    if (!guidedTarget && (targetDistance < m.ribbonWidth * 0.9 || Math.random() < dt * 0.04)) {
       this.pickTarget();
     }
 
@@ -4720,7 +4737,9 @@ class BigRibbon {
     const centerBias = Math.max(horizontalBias, verticalBias);
     const driftWaveX = Math.sin(timestamp * 0.00034 + this.driftPhase) * m.driftSpeed * 0.18;
     const driftWaveY = Math.cos(timestamp * 0.0003 + this.hoverPhase * 0.42) * m.driftSpeed * 0.14;
-    const desiredSpeed = m.driftSpeed * (0.54 + Math.sin(timestamp * 0.00025 + this.driftPhase) * 0.12);
+    const followBoost = guidedTarget ? clamp(targetDistance / Math.max(1, m.ribbonWidth * 2), 1, 1.85) : 1;
+    const desiredSpeed =
+      m.driftSpeed * (0.54 + Math.sin(timestamp * 0.00025 + this.driftPhase) * 0.12) * followBoost;
     const desiredVx = lerp(targetDir.x, centerDir.x, centerBias * 0.5) * desiredSpeed + driftWaveX;
     const desiredVy = lerp(targetDir.y, centerDir.y, centerBias * 0.5) * desiredSpeed * 0.82 + driftWaveY;
     const ease = 1 - Math.exp(-dt * 1.75);
@@ -4733,21 +4752,29 @@ class BigRibbon {
     if (this.x <= this.bounds.minX) {
       this.x = this.bounds.minX;
       this.vx = Math.abs(this.vx) * 0.48;
-      this.pickTarget();
+      if (!guidedTarget) {
+        this.pickTarget();
+      }
     } else if (this.x >= this.bounds.maxX) {
       this.x = this.bounds.maxX;
       this.vx = -Math.abs(this.vx) * 0.48;
-      this.pickTarget();
+      if (!guidedTarget) {
+        this.pickTarget();
+      }
     }
 
     if (this.y <= this.bounds.minY) {
       this.y = this.bounds.minY;
       this.vy = Math.abs(this.vy) * 0.48;
-      this.pickTarget();
+      if (!guidedTarget) {
+        this.pickTarget();
+      }
     } else if (this.y >= this.bounds.maxY) {
       this.y = this.bounds.maxY;
       this.vy = -Math.abs(this.vy) * 0.48;
-      this.pickTarget();
+      if (!guidedTarget) {
+        this.pickTarget();
+      }
     }
   }
 
@@ -5173,6 +5200,34 @@ class DevilPair {
     };
   }
 
+  getHeadTopPoint() {
+    const headRegions = Array.isArray(this.metrics.headRegions) ? this.metrics.headRegions : [];
+
+    if (!headRegions.length) {
+      return this.toWorldPoint(0, -this.metrics.pairHeight * 0.48);
+    }
+
+    let left = Infinity;
+    let right = -Infinity;
+    let top = Infinity;
+
+    for (const region of headRegions) {
+      if (!region) {
+        continue;
+      }
+
+      left = Math.min(left, region.x - region.rx);
+      right = Math.max(right, region.x + region.rx);
+      top = Math.min(top, region.y - region.ry);
+    }
+
+    if (!Number.isFinite(left) || !Number.isFinite(right) || !Number.isFinite(top)) {
+      return this.toWorldPoint(0, -this.metrics.pairHeight * 0.48);
+    }
+
+    return this.toWorldPoint((left + right) * 0.5, top);
+  }
+
   update(dt, timestamp) {
     this.anchor.update(dt, timestamp);
     this.anchor.facing = 1;
@@ -5299,11 +5354,26 @@ class CharacterGroup {
   }
 
   update(dt, timestamp) {
+    this.updateRelationshipTargets();
+
     for (const entry of this.entries) {
       entry.instance?.update(dt, timestamp);
     }
 
     this.resolveCollisions();
+  }
+
+  updateRelationshipTargets() {
+    const ribbonEntry = this.entries.find((entry) => entry.id === 'ribbon' && entry.instance);
+
+    if (!ribbonEntry) {
+      return;
+    }
+
+    const devilEntry = this.entries.find((entry) => entry.id === 'devil' && entry.instance);
+    const devilHeadPoint = devilEntry?.instance?.getHeadTopPoint?.();
+
+    ribbonEntry.instance.setDevilHeadTarget?.(devilHeadPoint || null);
   }
 
   draw(context) {
