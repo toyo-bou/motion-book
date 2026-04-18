@@ -28,6 +28,8 @@ const textIntervalInputEl = document.getElementById('text-interval-input');
 const textIntervalValueEl = document.getElementById('text-interval-value');
 const paperColorInputEl = document.getElementById('paper-color-input');
 const paperColorValueEl = document.getElementById('paper-color-value');
+const titleModeInputEl = document.getElementById('title-mode-input');
+const titleModeValueEl = document.getElementById('title-mode-value');
 const bloodModeInputEl = document.getElementById('blood-mode-input');
 const bloodModeValueEl = document.getElementById('blood-mode-value');
 const audioFileInputEl = document.getElementById('audio-file-input');
@@ -50,6 +52,8 @@ const TEXT_CLEARANCE_MULTIPLIER = 1.18;
 const OUTLINE_GAP_BASELINE_PERCENT = 100;
 const MIN_OUTLINE_GAP_PERCENT = 50;
 const MAX_OUTLINE_GAP_PERCENT = 220;
+const TITLE_FONT_SCALE = 1.62;
+const TITLE_RESERVED_ROWS = 2;
 const FONT_LOAD_TIMEOUT_MS = 3000;
 const RESIZE_DEBOUNCE_MS = 180;
 const SETTINGS_STORAGE_KEY = 'motion-book.settings.v1';
@@ -106,6 +110,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   fontFamily: 'kiwi-maru',
   textFlowIntervalMs: 100,
   paperColor: '#f0e6da',
+  titleMode: false,
   bloodMode: false,
 });
 const LEGACY_DEFAULT_SETTINGS = Object.freeze({
@@ -2109,6 +2114,7 @@ function sanitizeSettings(candidate = {}) {
       candidate.paperColor ?? candidate.backgroundColor,
       DEFAULT_SETTINGS.paperColor
     ),
+    titleMode: Boolean(candidate.titleMode),
     bloodMode: Boolean(candidate.bloodMode),
   };
 }
@@ -2202,6 +2208,7 @@ function updateConfigValueLabels() {
     paperColorInputEl.value,
     DEFAULT_SETTINGS.paperColor
   ).toUpperCase();
+  titleModeValueEl.textContent = titleModeInputEl.checked ? 'ON' : 'OFF';
   bloodModeValueEl.textContent = bloodModeInputEl.checked ? 'ON' : 'OFF';
 }
 
@@ -2213,6 +2220,7 @@ function populateConfigForm(nextSettings = settings) {
   fontFamilyInputEl.value = safeSettings.fontFamily;
   textIntervalInputEl.value = String(safeSettings.textFlowIntervalMs);
   paperColorInputEl.value = safeSettings.paperColor;
+  titleModeInputEl.checked = safeSettings.titleMode;
   bloodModeInputEl.checked = safeSettings.bloodMode;
   updateConfigValueLabels();
 }
@@ -2225,6 +2233,7 @@ function readConfigForm() {
     fontFamily: fontFamilyInputEl.value,
     textFlowIntervalMs: Number(textIntervalInputEl.value),
     paperColor: paperColorInputEl.value,
+    titleMode: titleModeInputEl.checked,
     bloodMode: bloodModeInputEl.checked,
   });
 }
@@ -2697,12 +2706,19 @@ function estimateFontSize(panelRect) {
   return clamp(estimated, MIN_FONT_SIZE, MAX_FONT_SIZE);
 }
 
-function buildSourceLines(source, maxChars) {
+function buildSourceLines(source, maxChars, options = {}) {
+  const { titleMode = settings.titleMode } = options;
   const normalizedSource = normalizeSourceText(source);
   const rawLines = normalizedSource.split('\n');
   const lines = [];
   let remaining = Math.max(0, maxChars);
   let glyphCount = 0;
+  let titleLine = [];
+
+  if (titleMode) {
+    titleLine = [...(rawLines.shift() || '')];
+    glyphCount += titleLine.length;
+  }
 
   for (const rawLine of rawLines) {
     if (remaining <= 0) {
@@ -2717,6 +2733,7 @@ function buildSourceLines(source, maxChars) {
   }
 
   return {
+    titleLine,
     lines,
     glyphCount,
   };
@@ -2732,6 +2749,7 @@ function buildPanel() {
   const cellWidth = getSampleCellWidth();
   const cols = Math.max(8, Math.floor(panelRect.innerWidth / cellWidth));
   const rows = Math.max(12, Math.floor(panelRect.innerHeight / lineHeight));
+  const titleRows = settings.titleMode ? Math.min(TITLE_RESERVED_ROWS, Math.max(0, rows - 1)) : 0;
   const slotWidth = cols * cellWidth;
   const slotHeight = rows * lineHeight;
   const offsetX = panelRect.innerX + (panelRect.innerWidth - slotWidth) * 0.5;
@@ -2767,6 +2785,7 @@ function buildPanel() {
     cellWidth,
     cols,
     rows,
+    titleRows,
     slots,
     rowCenters,
     baseMetricsById,
@@ -2775,30 +2794,36 @@ function buildPanel() {
     motionEdgeClearance,
     textObstacleClearance,
     visibleTarget: TARGET_VISIBLE_CHARS,
+    titleLine: [],
     textLines: [],
     textGlyphCount: 0,
   };
 }
 
 function populatePanelTextContent(layout, layoutCharacter) {
+  const titleReservedSlots = Math.max(0, layout.titleRows || 0) * layout.cols;
+  const usableSlots = Math.max(0, layout.slots.length - titleReservedSlots);
   const blockedEstimate =
     layoutCharacter && typeof layoutCharacter.estimateBlockedSlots === 'function'
       ? layoutCharacter.estimateBlockedSlots(layout.cellWidth, layout.lineHeight, layout.textObstacleClearance)
       : 0;
-  const spareSlots = Math.max(12, Math.round(layout.slots.length * 0.06));
-  const maxBlockedSlots = Math.max(0, layout.slots.length - spareSlots - MIN_VISIBLE_CHARS);
+  const spareSlots = Math.max(12, Math.round(usableSlots * 0.06));
+  const maxBlockedSlots = Math.max(0, usableSlots - spareSlots - MIN_VISIBLE_CHARS);
   const blockedSlots = clamp(Math.round(blockedEstimate || 0), 0, maxBlockedSlots);
   const visibleTarget = Math.min(
     TARGET_VISIBLE_CHARS,
-    Math.max(MIN_VISIBLE_CHARS, layout.slots.length - blockedSlots - spareSlots)
+    Math.max(MIN_VISIBLE_CHARS, usableSlots - blockedSlots - spareSlots)
   );
-  const textContent = buildSourceLines(bookTextSource, visibleTarget);
+  const textContent = buildSourceLines(bookTextSource, visibleTarget, {
+    titleMode: settings.titleMode,
+  });
 
   return {
     ...layout,
     blockedSlots,
     spareSlots,
     visibleTarget,
+    titleLine: textContent.titleLine,
     textLines: textContent.lines,
     textGlyphCount: textContent.glyphCount,
   };
@@ -2814,10 +2839,11 @@ function getMotionBounds(layout, layoutCharacter = null) {
       top: 0,
       bottom: 0,
     };
+  const titleClearance = settings.titleMode ? Math.max(0, layout.titleRows || 0) * layout.lineHeight : 0;
   return {
     minX: layout.innerX + motionInsets.left + layout.motionEdgeClearance * 0.55,
     maxX: layout.innerX + layout.innerWidth - motionInsets.right - layout.motionEdgeClearance * 0.55,
-    minY: layout.innerY + motionInsets.top + layout.motionEdgeClearance * 0.35,
+    minY: layout.innerY + titleClearance + motionInsets.top + layout.motionEdgeClearance * 0.35,
     maxY: layout.innerY + layout.innerHeight - motionInsets.bottom - layout.motionEdgeClearance * 0.35,
   };
 }
@@ -5399,8 +5425,9 @@ function getFlowTargets() {
   const targets = [];
   let lineIndex = 0;
   let lineOffset = 0;
+  const startRow = settings.titleMode ? Math.max(0, panel.titleRows || 0) : 0;
 
-  for (let row = 0; row < panel.rows && lineIndex < panel.textLines.length; row += 1) {
+  for (let row = startRow; row < panel.rows && lineIndex < panel.textLines.length; row += 1) {
     const currentLine = panel.textLines[lineIndex];
 
     if (currentLine.length === 0) {
@@ -5466,8 +5493,76 @@ function updateTextFlow(timestamp, force = false) {
   lastTextFlowUpdate = timestamp;
 }
 
+function getTitleText() {
+  if (!settings.titleMode || !panel || !panel.titleLine.length) {
+    return '';
+  }
+
+  return panel.titleLine.join('');
+}
+
+function getFittedTitleFontSize(titleText, maxWidth) {
+  const minTitleFontSize = Math.max(10, Math.round(panel.fontSize * 1.05));
+  let titleFontSize = clamp(Math.round(panel.fontSize * TITLE_FONT_SCALE), minTitleFontSize, 48);
+
+  ctx.font = createFont(titleFontSize);
+  while (titleFontSize > minTitleFontSize && ctx.measureText(titleText).width > maxWidth) {
+    titleFontSize -= 1;
+    ctx.font = createFont(titleFontSize);
+  }
+
+  return titleFontSize;
+}
+
+function drawTitleText() {
+  const titleText = getTitleText();
+  if (!titleText) {
+    return;
+  }
+
+  const titleRows = Math.max(1, panel.titleRows || 1);
+  const lastTitleRowIndex = Math.min(panel.rowCenters.length - 1, titleRows - 1);
+  const centerX = panel.innerX + panel.innerWidth * 0.5;
+  const centerY = (panel.rowCenters[0] + panel.rowCenters[lastTitleRowIndex]) * 0.5 - panel.lineHeight * 0.04;
+  const maxTitleWidth = Math.max(60, panel.innerWidth * 0.9);
+  const titleFontSize = getFittedTitleFontSize(titleText, maxTitleWidth);
+  const textRgb = hexToRgb(settings.textColor);
+  const shadowRgb = mixRgb(textRgb, { r: 0, g: 0, b: 0 }, 0.42);
+  const accentRgb = mixRgb(textRgb, { r: 142, g: 42, b: 50 }, settings.bloodMode ? 0.22 : 0.12);
+
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = createFont(titleFontSize);
+  ctx.fillStyle = rgbToCss(accentRgb, 1);
+  ctx.shadowColor = rgbToCss(shadowRgb, 0.2);
+  ctx.shadowBlur = Math.max(1.5, titleFontSize * 0.08);
+  ctx.shadowOffsetY = Math.max(0.8, titleFontSize * 0.04);
+  ctx.fillText(titleText, centerX, centerY, maxTitleWidth);
+
+  const titleWidth = Math.min(maxTitleWidth, ctx.measureText(titleText).width);
+  const underlineWidth = Math.max(titleFontSize * 1.8, titleWidth * 0.72);
+  const underlineY = centerY + titleFontSize * 0.68;
+  ctx.shadowColor = 'transparent';
+  ctx.globalAlpha = 0.5;
+  ctx.strokeStyle = rgbToCss(accentRgb, 0.74);
+  ctx.lineWidth = Math.max(1, titleFontSize * 0.045);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(centerX - underlineWidth * 0.5, underlineY);
+  ctx.lineTo(centerX + underlineWidth * 0.5, underlineY);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawText() {
-  if (!panel || !flowTargets.length) {
+  if (!panel) {
+    return;
+  }
+
+  drawTitleText();
+
+  if (!flowTargets.length) {
     return;
   }
 
@@ -5822,6 +5917,10 @@ textIntervalInputEl.addEventListener('input', () => {
   previewConfigSettings();
 });
 paperColorInputEl.addEventListener('input', () => {
+  updateConfigValueLabels();
+  previewConfigSettings();
+});
+titleModeInputEl.addEventListener('change', () => {
   updateConfigValueLabels();
   previewConfigSettings();
 });
